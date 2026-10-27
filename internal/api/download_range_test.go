@@ -2,12 +2,14 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestDownloadROMFromZeroOffsetSendsNoRange(t *testing.T) {
@@ -18,7 +20,7 @@ func TestDownloadROMFromZeroOffsetSendsNoRange(t *testing.T) {
 		w.Write([]byte("whole"))
 	})
 	var buf bytes.Buffer
-	if err := c.DownloadROMFrom(3, 0, &buf, nil); err != nil {
+	if err := c.DownloadROMFrom(context.Background(), 3, 0, &buf, nil); err != nil {
 		t.Fatal(err)
 	}
 	if buf.String() != "whole" {
@@ -37,7 +39,7 @@ func TestDownloadROMFromSendsRangeAndAppendsOn206(t *testing.T) {
 	var buf bytes.Buffer
 	buf.WriteString("0123") // what is already on disk
 	var last int64
-	if err := c.DownloadROMFrom(3, 4, &buf, func(n int64) { last = n }); err != nil {
+	if err := c.DownloadROMFrom(context.Background(), 3, 4, &buf, func(n int64) { last = n }); err != nil {
 		t.Fatal(err)
 	}
 	if gotRange != "bytes=4-" {
@@ -64,7 +66,7 @@ func TestDownloadROMFromRestartsFileOn200(t *testing.T) {
 	f.Seek(0, 2)
 
 	var last int64
-	if err := c.DownloadROMFrom(3, 5, f, func(n int64) { last = n }); err != nil {
+	if err := c.DownloadROMFrom(context.Background(), 3, 5, f, func(n int64) { last = n }); err != nil {
 		t.Fatal(err)
 	}
 	got, _ := os.ReadFile(f.Name())
@@ -82,7 +84,7 @@ func TestDownloadROMFromWriterThatCannotRestartIsError(t *testing.T) {
 	})
 	var buf bytes.Buffer
 	buf.WriteString("stale")
-	err := c.DownloadROMFrom(3, 5, &buf, nil)
+	err := c.DownloadROMFrom(context.Background(), 3, 5, &buf, nil)
 	if err == nil {
 		t.Fatal("want an error: a 200 to a ranged request cannot be appended")
 	}
@@ -95,7 +97,7 @@ func TestDownloadROMFromUnauthorizedIsSentinel(t *testing.T) {
 	c, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
 	})
-	err := c.DownloadROMFrom(3, 4, &bytes.Buffer{}, nil)
+	err := c.DownloadROMFrom(context.Background(), 3, 4, &bytes.Buffer{}, nil)
 	if !errors.Is(err, ErrUnauthorized) {
 		t.Fatalf("err = %v, want ErrUnauthorized", err)
 	}
@@ -105,11 +107,79 @@ func TestDownloadROMFromRangeNotSatisfiableIsSentinel(t *testing.T) {
 	c, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusRequestedRangeNotSatisfiable)
 	})
-	err := c.DownloadROMFrom(3, 99, &bytes.Buffer{}, nil)
+	err := c.DownloadROMFrom(context.Background(), 3, 99, &bytes.Buffer{}, nil)
 	if !errors.Is(err, ErrRangeNotSatisfiable) {
 		t.Fatalf("err = %v, want ErrRangeNotSatisfiable", err)
 	}
 	if err != nil && !strings.Contains(err.Error(), "416") {
 		t.Fatalf("err = %v, want one mentioning 416", err)
+	}
+}
+
+func TestDownloadROMFromMisalignedContentRangeIsErrorAndWritesNothing(t *testing.T) {
+	for name, hdr := range map[string]string{
+		"wrong start": "bytes 0-5/10",
+		"missing":     "",
+		"garbage":     "items 4-9/10",
+	} {
+		t.Run(name, func(t *testing.T) {
+			c, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+				if hdr != "" {
+					w.Header().Set("Content-Range", hdr)
+				}
+				w.WriteHeader(http.StatusPartialContent)
+				w.Write([]byte("456789"))
+			})
+			var buf bytes.Buffer
+			buf.WriteString("0123")
+			if err := c.DownloadROMFrom(context.Background(), 3, 4, &buf, nil); err == nil {
+				t.Fatal("want an error for a 206 that does not start at the offset we sent")
+			}
+			if buf.String() != "0123" {
+				t.Fatalf("writer = %q, want it untouched", buf.String())
+			}
+		})
+	}
+}
+
+type failAfterWriter struct{ n int }
+
+func (f *failAfterWriter) Write(p []byte) (int, error) {
+	if f.n <= 0 {
+		return 0, errors.New("disk full")
+	}
+	if len(p) > f.n {
+		p = p[:f.n]
+	}
+	f.n -= len(p)
+	return len(p), nil
+}
+
+func TestDownloadROMFromWriterErrorMidCopyIsReturned(t *testing.T) {
+	c, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("0123456789"))
+	})
+	if err := c.DownloadROMFrom(context.Background(), 3, 0, &failAfterWriter{n: 4}, nil); err == nil {
+		t.Fatal("want the writer's error")
+	}
+}
+
+func TestDownloadROMFromCancelledBeforeResponseReturnsContextError(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	c, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		cancel()
+		select { // never answers; the timeout only keeps a failing run from hanging
+		case <-r.Context().Done():
+		case <-time.After(10 * time.Second):
+		}
+	})
+	var buf bytes.Buffer
+	err := c.DownloadROMFrom(ctx, 3, 0, &buf, nil)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("err = %v, want context.Canceled", err)
+	}
+	if buf.Len() != 0 {
+		t.Fatalf("writer got %q", buf.String())
 	}
 }

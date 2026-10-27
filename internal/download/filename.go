@@ -34,6 +34,21 @@ func Filename(rom api.ROM) string {
 	return title + ext
 }
 
+// idFilename is Filename with "-<id>" inserted before the extension
+// ("Zelda.gba", id 42 -> "Zelda-42.gba"). It is used when the clean name is
+// already taken by another ROM. It is still one sanitized path segment.
+func idFilename(rom api.ROM) string {
+	title := strings.TrimRight(strings.TrimSpace(sanitize(rom.Title)), ". ")
+	ext := truncBytes(sanitize(rom.Extension), maxExtBytes)
+	suffix := fmt.Sprintf("-%d", rom.ID)
+	title = truncBytes(title, maxNameBytes-len(ext)-len(suffix))
+	title = strings.TrimRight(title, ". ")
+	if title == "" {
+		return fmt.Sprintf("rom-%d%s", rom.ID, ext)
+	}
+	return title + suffix + ext
+}
+
 // sanitize drops control characters and replaces / \ and the FAT-reserved
 // characters : * ? " < > | with "_".
 func sanitize(s string) string {

@@ -16,7 +16,7 @@ import (
 
 // Fetcher downloads a ROM into w starting at offset. *api.Client implements it.
 type Fetcher interface {
-	DownloadROMFrom(id int, offset int64, w io.Writer, progress func(written int64)) error
+	DownloadROMFrom(ctx context.Context, id int, offset int64, w io.Writer, progress func(written int64)) error
 }
 
 // Status is where an item is in the queue.
@@ -150,10 +150,16 @@ func (q *Queue) runOne(ctx context.Context, i int) {
 		q.fail(i, err.Error())
 		return
 	}
+	// A file already at the clean name may be a different ROM with the same
+	// title, so it is never overwritten or taken as "already downloaded".
+	// Fall back to <title>-<id><ext>; if that exists this ROM was saved before.
 	final := filepath.Join(dir, Filename(it.ROM))
-	if st, err := os.Stat(final); err == nil {
-		q.update(i, func(it *Item) { it.Status, it.Skipped, it.Written = Done, true, st.Size() })
-		return
+	if _, err := os.Stat(final); err == nil {
+		final = filepath.Join(dir, idFilename(it.ROM))
+		if st, err := os.Stat(final); err == nil {
+			q.update(i, func(it *Item) { it.Status, it.Skipped, it.Written = Done, true, st.Size() })
+			return
+		}
 	}
 
 	q.update(i, func(it *Item) { it.Status = Active })
@@ -216,8 +222,15 @@ func (q *Queue) fill(ctx context.Context, i int, f *os.File) error {
 	if err := f.Sync(); err != nil {
 		return err
 	}
-	if st, err := f.Stat(); err == nil {
-		q.update(i, func(it *Item) { it.Written = st.Size() })
+	st, err = f.Stat()
+	if err != nil {
+		return err
+	}
+	q.update(i, func(it *Item) { it.Written = st.Size() })
+	// A body cut short without an error (no Content-Length, closed early) must
+	// not be renamed into place; the .part stays for a resume.
+	if want := q.items[i].ROM.SizeBytes; want != nil && *want > 0 && st.Size() != *want {
+		return fmt.Errorf("download incomplete: %d of %d bytes", st.Size(), *want)
 	}
 	return nil
 }
@@ -226,7 +239,7 @@ func (q *Queue) fill(ctx context.Context, i int, f *os.File) error {
 func (q *Queue) fetch(ctx context.Context, i int, f *os.File, offset int64) error {
 	q.update(i, func(it *Item) { it.Written = offset })
 	cw := &ctxFile{ctx: ctx, f: f}
-	return q.f.DownloadROMFrom(q.items[i].ROM.ID, offset, cw, func(written int64) {
+	return q.f.DownloadROMFrom(ctx, q.items[i].ROM.ID, offset, cw, func(written int64) {
 		q.update(i, func(it *Item) { it.Written = written })
 	})
 }

@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/amtypaldos/birdroms-handheld/internal/api"
 )
@@ -21,7 +22,7 @@ type fakeFetcher struct {
 	calls []int
 }
 
-func (f *fakeFetcher) DownloadROMFrom(id int, offset int64, w io.Writer, progress func(int64)) error {
+func (f *fakeFetcher) DownloadROMFrom(_ context.Context, id int, offset int64, w io.Writer, progress func(int64)) error {
 	f.calls = append(f.calls, id)
 	return f.fn(id, offset, w, progress)
 }
@@ -287,6 +288,7 @@ func TestExistingFinalFileIsSkippedNotOverwritten(t *testing.T) {
 	dir := filepath.Join(mount, "Roms", "GBA")
 	os.MkdirAll(dir, 0o755)
 	os.WriteFile(filepath.Join(dir, "Metroid.gba"), []byte("mine"), 0o644)
+	os.WriteFile(filepath.Join(dir, "Metroid-1.gba"), []byte("mine-1"), 0o644) // this ROM was saved before
 
 	fetch := &fakeFetcher{fn: body("theirs")}
 	q := New(fetch, mount, []api.ROM{gba(1, "Metroid")})
@@ -374,5 +376,177 @@ func TestProgressAndFinishedReporting(t *testing.T) {
 	q.Run(context.Background())
 	if !q.Finished() {
 		t.Fatal("not Finished after Run")
+	}
+}
+
+// sizedROM is gba(id, title) with a known size.
+func sizedROM(id int, title string, size int64) api.ROM {
+	r := gba(id, title)
+	r.SizeBytes = &size
+	return r
+}
+
+func partDir(mount string) string { return filepath.Join(mount, "Roms", "GBA") }
+
+func TestShortBodyWithoutContentLengthIsNotRenamed(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.WriteString(w, "abc")
+		w.(http.Flusher).Flush() // chunked: the client sees no Content-Length
+	}))
+	defer srv.Close()
+
+	mount := t.TempDir()
+	q := New(api.New(srv.URL, "tok", nil), mount, []api.ROM{sizedROM(1, "Metroid", 10)})
+	q.Run(context.Background())
+
+	final := filepath.Join(partDir(mount), "Metroid.gba")
+	if exists(final) {
+		t.Fatal("a short download was renamed into place")
+	}
+	if !exists(final + ".part") {
+		t.Fatal(".part was removed; it must stay for a resume")
+	}
+	if it := q.Snapshot()[0]; it.Status != Failed {
+		t.Fatalf("item = %+v, want Failed", it)
+	}
+}
+
+func TestWrongContentRangeStartIsNotRenamedOrAppended(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Range", "bytes 0-5/10") // we asked for 4-
+		w.WriteHeader(http.StatusPartialContent)
+		io.WriteString(w, "456789")
+	}))
+	defer srv.Close()
+
+	mount := t.TempDir()
+	dir := partDir(mount)
+	os.MkdirAll(dir, 0o755)
+	os.WriteFile(filepath.Join(dir, "Metroid.gba.part"), []byte("0123"), 0o644)
+
+	q := New(api.New(srv.URL, "tok", nil), mount, []api.ROM{sizedROM(1, "Metroid", 10)})
+	q.Run(context.Background())
+
+	if exists(filepath.Join(dir, "Metroid.gba")) {
+		t.Fatal("a misaligned 206 produced a final file")
+	}
+	if got := readFile(t, filepath.Join(dir, "Metroid.gba.part")); got != "0123" {
+		t.Fatalf(".part = %q, want it untouched", got)
+	}
+}
+
+func TestFailingWriterMidCopyDoesNotCreateFinalFile(t *testing.T) {
+	fetch := &fakeFetcher{fn: func(_ int, _ int64, w io.Writer, _ func(int64)) error {
+		io.WriteString(w, "half")
+		return errors.New("disk error")
+	}}
+	mount := t.TempDir()
+	q := New(fetch, mount, []api.ROM{sizedROM(1, "Metroid", 10)})
+	q.Run(context.Background())
+	if exists(filepath.Join(partDir(mount), "Metroid.gba")) {
+		t.Fatal("final file created after a failed copy")
+	}
+}
+
+func TestFullBodyMatchingSizeStillRenamesIncludingResume(t *testing.T) {
+	// fresh
+	mount := t.TempDir()
+	q := New(&fakeFetcher{fn: body("0123456789")}, mount, []api.ROM{sizedROM(1, "Metroid", 10)})
+	q.Run(context.Background())
+	if got := readFile(t, filepath.Join(partDir(mount), "Metroid.gba")); got != "0123456789" {
+		t.Fatalf("fresh final = %q", got)
+	}
+
+	// resume over HTTP
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Range", "bytes 4-9/10")
+		w.WriteHeader(http.StatusPartialContent)
+		io.WriteString(w, "456789")
+	}))
+	defer srv.Close()
+	mount = t.TempDir()
+	dir := partDir(mount)
+	os.MkdirAll(dir, 0o755)
+	os.WriteFile(filepath.Join(dir, "Metroid.gba.part"), []byte("0123"), 0o644)
+	q = New(api.New(srv.URL, "tok", nil), mount, []api.ROM{sizedROM(1, "Metroid", 10)})
+	q.Run(context.Background())
+	if got := readFile(t, filepath.Join(dir, "Metroid.gba")); got != "0123456789" {
+		t.Fatalf("resumed final = %q", got)
+	}
+}
+
+func TestSameTitleDifferentROMsDoNotShareAFile(t *testing.T) {
+	mount := t.TempDir()
+	fetch := &fakeFetcher{fn: func(id int, off int64, w io.Writer, p func(int64)) error {
+		return body(map[int]string{1: "first-bytes", 42: "second-bytes"}[id])(id, off, w, p)
+	}}
+	roms := []api.ROM{gba(1, "Zelda"), gba(42, "Zelda")}
+	q := New(fetch, mount, roms)
+	q.Run(context.Background())
+
+	dir := partDir(mount)
+	if got := readFile(t, filepath.Join(dir, "Zelda.gba")); got != "first-bytes" {
+		t.Fatalf("Zelda.gba = %q", got)
+	}
+	if got := readFile(t, filepath.Join(dir, "Zelda-42.gba")); got != "second-bytes" {
+		t.Fatalf("Zelda-42.gba = %q", got)
+	}
+
+	// Run the same ROMs again. The clean name is taken, so ROM 1 now goes to
+	// Zelda-1.gba (the clean-named file cannot be told apart from another
+	// ROM's); ROM 42 was saved before and is skipped. Nothing is overwritten.
+	fetch.calls = nil
+	q2 := New(fetch, mount, roms)
+	q2.Run(context.Background())
+	if len(fetch.calls) != 1 || fetch.calls[0] != 1 {
+		t.Fatalf("re-run fetched %v, want only ROM 1", fetch.calls)
+	}
+	if it := q2.Snapshot()[1]; it.Status != Done || !it.Skipped {
+		t.Fatalf("ROM 42 item = %+v, want Done and Skipped", it)
+	}
+	if got := readFile(t, filepath.Join(dir, "Zelda.gba")); got != "first-bytes" {
+		t.Fatalf("Zelda.gba overwritten: %q", got)
+	}
+	if got := readFile(t, filepath.Join(dir, "Zelda-42.gba")); got != "second-bytes" {
+		t.Fatalf("Zelda-42.gba overwritten: %q", got)
+	}
+}
+
+func TestIDFilenameInsertsIDBeforeExtensionAsOneSegment(t *testing.T) {
+	if got := idFilename(gba(42, "Zelda")); got != "Zelda-42.gba" {
+		t.Fatalf("idFilename = %q, want Zelda-42.gba", got)
+	}
+	got := idFilename(api.ROM{ID: 7, Title: "../x", Extension: ".gba"})
+	if got != ".._x-7.gba" {
+		t.Fatalf("idFilename = %q, want a sanitized single segment .._x-7.gba", got)
+	}
+}
+
+func TestStopBeforeFirstByteAbortsRequest(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		cancel()
+		select { // never answers; the timeout only keeps a failing run from hanging
+		case <-r.Context().Done():
+		case <-time.After(10 * time.Second):
+		}
+	}))
+	defer srv.Close()
+
+	mount := t.TempDir()
+	q := New(api.New(srv.URL, "tok", nil), mount, []api.ROM{gba(1, "Metroid")})
+	done := make(chan struct{})
+	go func() { q.Run(ctx); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Run did not return after cancel before the first byte")
+	}
+	if exists(filepath.Join(partDir(mount), "Metroid.gba")) {
+		t.Fatal("final file created")
+	}
+	if it := q.Snapshot()[0]; it.Status != Cancelled {
+		t.Fatalf("item = %+v, want Cancelled", it)
 	}
 }
