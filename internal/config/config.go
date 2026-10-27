@@ -38,7 +38,7 @@ func Load(path string) (Config, error) {
 
 // Save writes c to path as JSON with mode 0600, creating parent directories
 // as needed. The write is atomic (temp file + rename) so a crash cannot leave
-// a truncated config, and an existing file's mode is replaced with 0600.
+// a truncated config, and the resulting file is 0600 (the temp file's mode).
 func Save(path string, c Config) error {
 	data, err := json.MarshalIndent(c, "", "  ")
 	if err != nil {
@@ -57,11 +57,8 @@ func Save(path string, c Config) error {
 	tmpName := tmp.Name()
 	cleanup := func() { _ = os.Remove(tmpName) }
 
-	if err := tmp.Chmod(0o600); err != nil {
-		tmp.Close()
-		cleanup()
-		return err
-	}
+	// No explicit Chmod: os.CreateTemp already creates the file at 0600, and
+	// chmod can fail (EPERM) on the FAT/exFAT ROM card.
 	if _, err := tmp.Write(data); err != nil {
 		tmp.Close()
 		cleanup()
