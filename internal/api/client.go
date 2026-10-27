@@ -1,0 +1,192 @@
+// Package api is the read-only birdROMs device API client. Every request is a
+// GET authenticated with "Authorization: Device <token>".
+package api
+
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"net/url"
+	"strconv"
+	"strings"
+)
+
+// ErrUnauthorized is returned (wrapped) when the server answers HTTP 401,
+// i.e. the device token is revoked or unknown. Check with errors.Is.
+var ErrUnauthorized = errors.New("api: unauthorized (device token revoked or unknown)")
+
+// ROM is a ROM in the device shape returned by the server. SizeBytes and
+// CoverURL are nil when the server reports null.
+type ROM struct {
+	ID        int     `json:"id"`
+	Title     string  `json:"title"`
+	Platform  string  `json:"platform"`
+	Extension string  `json:"extension"`
+	SizeBytes *int64  `json:"size_bytes"`
+	CoverURL  *string `json:"cover_url"`
+}
+
+// ROMPage is one page of the ROM listing. Next and Previous are the server's
+// pagination links (nil when absent); the client never follows them itself.
+type ROMPage struct {
+	Count    int     `json:"count"`
+	Next     *string `json:"next"`
+	Previous *string `json:"previous"`
+	Results  []ROM   `json:"results"`
+}
+
+// Playlist is a playlist summary.
+type Playlist struct {
+	ID        int    `json:"id"`
+	Name      string `json:"name"`
+	CreatedBy string `json:"created_by"`
+	CreatedAt string `json:"created_at"`
+	ROMCount  int    `json:"rom_count"`
+}
+
+// PlaylistDetail is a playlist plus its ROMs in server order.
+type PlaylistDetail struct {
+	Playlist
+	ROMs []ROM `json:"roms"`
+}
+
+// Client talks to one birdROMs server with one device token.
+type Client struct {
+	base  string
+	token string
+	hc    *http.Client
+}
+
+// New returns a Client for baseURL (a trailing slash is trimmed) using the
+// given device token. hc may be nil, in which case a default http.Client with
+// no overall timeout is used (ROM downloads can legitimately take minutes).
+func New(baseURL, token string, hc *http.Client) *Client {
+	if hc == nil {
+		hc = &http.Client{}
+	}
+	return &Client{base: strings.TrimRight(baseURL, "/"), token: token, hc: hc}
+}
+
+// ListPlatforms returns the platform names that have ROMs.
+func (c *Client) ListPlatforms() ([]string, error) {
+	var out []string
+	if err := c.getJSON("/api/roms/platforms/", nil, &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// ListROMs returns one page (1-based) of ROMs in the device shape. An empty
+// platform lists all platforms.
+func (c *Client) ListROMs(platform string, page int) (ROMPage, error) {
+	q := url.Values{}
+	q.Set("fields", "device")
+	q.Set("page", strconv.Itoa(page))
+	if platform != "" {
+		q.Set("platform", platform)
+	}
+	var out ROMPage
+	if err := c.getJSON("/api/roms/", q, &out); err != nil {
+		return ROMPage{}, err
+	}
+	return out, nil
+}
+
+// ListPlaylists returns all playlists (the endpoint is unpaginated).
+func (c *Client) ListPlaylists() ([]Playlist, error) {
+	var out []Playlist
+	if err := c.getJSON("/api/playlists/", nil, &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// GetPlaylist returns playlist id with its ROMs in server order.
+func (c *Client) GetPlaylist(id int) (PlaylistDetail, error) {
+	var out PlaylistDetail
+	if err := c.getJSON("/api/playlists/"+strconv.Itoa(id)+"/", nil, &out); err != nil {
+		return PlaylistDetail{}, err
+	}
+	return out, nil
+}
+
+// DownloadROM streams ROM id into w. If progressCb is non-nil it is called
+// after each chunk written with the cumulative number of bytes so far. On any
+// non-2xx response nothing is written to w.
+func (c *Client) DownloadROM(id int, w io.Writer, progressCb func(written int64)) error {
+	resp, err := c.get("/api/roms/"+strconv.Itoa(id)+"/download/", nil)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	cw := &countingWriter{w: w, cb: progressCb}
+	if _, err := io.Copy(cw, resp.Body); err != nil {
+		return fmt.Errorf("api: download rom %d: %w", id, err)
+	}
+	return nil
+}
+
+// countingWriter forwards writes to w and reports the running total to cb.
+type countingWriter struct {
+	w     io.Writer
+	cb    func(int64)
+	total int64
+}
+
+func (cw *countingWriter) Write(p []byte) (int, error) {
+	n, err := cw.w.Write(p)
+	if n > 0 {
+		cw.total += int64(n)
+		if cw.cb != nil {
+			cw.cb(cw.total)
+		}
+	}
+	return n, err
+}
+
+// getJSON GETs path and decodes the JSON body into out.
+func (c *Client) getJSON(path string, q url.Values, out any) error {
+	resp, err := c.get(path, q)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
+		return fmt.Errorf("api: decode %s: %w", path, err)
+	}
+	return nil
+}
+
+// get issues an authenticated GET and returns the response only for 2xx
+// statuses. 401 maps to ErrUnauthorized; other statuses become an error that
+// includes the code. The caller must close the body of a returned response.
+func (c *Client) get(path string, q url.Values) (*http.Response, error) {
+	u := c.base + path
+	if len(q) > 0 {
+		u += "?" + q.Encode()
+	}
+	req, err := http.NewRequest(http.MethodGet, u, nil)
+	if err != nil {
+		return nil, fmt.Errorf("api: build request %s: %w", path, err)
+	}
+	req.Header.Set("Authorization", "Device "+c.token)
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := c.hc.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("api: GET %s: %w", path, err)
+	}
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		return resp, nil
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusUnauthorized {
+		return nil, fmt.Errorf("GET %s: %w", path, ErrUnauthorized)
+	}
+	snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 200))
+	return nil, fmt.Errorf("api: GET %s: unexpected status %d %s: %s",
+		path, resp.StatusCode, http.StatusText(resp.StatusCode), strings.TrimSpace(string(snippet)))
+}
