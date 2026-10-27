@@ -23,3 +23,7 @@ deploy: build
     SSHPASS=${SSHPASS:-root} sshpass -e scp assets/fonts/ChakraPetch-Bold.ttf root@muos.local:/mnt/mmc/MUOS/application/birdROMs/assets/fonts/
     SSHPASS=${SSHPASS:-root} sshpass -e scp package/mux_launch.sh package/mux_lang.ini root@muos.local:/mnt/mmc/MUOS/application/birdROMs/
     SSHPASS=${SSHPASS:-root} sshpass -e ssh root@muos.local 'chmod +x /mnt/mmc/MUOS/application/birdROMs/mux_launch.sh /mnt/mmc/MUOS/application/birdROMs/birdroms && sync'
+
+# Run natively on this machine (needs `brew install sdl2 sdl2_ttf pkgconf`); keys: arrows, Z/X=A/B, A/S=X/Y, Q/W=L1/R1, Enter=Start, Esc=Menu.
+run:
+    go run ./cmd/birdroms
