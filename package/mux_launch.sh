@@ -18,6 +18,9 @@ cd "$APP_DIR" || exit
 
 export SDL_GAMECONTROLLERCONFIG_FILE="/usr/lib/gamecontrollerdb.txt"
 
+ROM_MOUNT="$(GET_VAR "device" "storage/rom/mount" 2>/dev/null || true)"
+[ -n "$ROM_MOUNT" ] && export BIRDROMS_ROM_MOUNT="$ROM_MOUNT"
+
 CAFFEINE="$(command -v CAFFEINE 2>/dev/null || true)"
 [ -n "$CAFFEINE" ] && "$CAFFEINE" on
 
