@@ -26,6 +26,11 @@ type Fonts struct {
 	Small, Tiny *ttf.Font
 }
 
+// Downloader runs the download queue for the selected ROMs, blocking (and
+// drawing its own screen) until the user leaves it. It reports whether the
+// window was closed meanwhile.
+type Downloader func(roms []api.ROM) (quit bool)
+
 // Outcome is how the browse screen ended.
 type Outcome int
 
@@ -64,6 +69,7 @@ type screen struct {
 	r      *sdl.Renderer
 	f      Fonts
 	m      *browse.Model
+	dl     Downloader
 	covers *coverLoader
 	cache  *browse.Cache[*coverTex]
 
@@ -71,15 +77,18 @@ type screen struct {
 	homeTop  int          // first visible home row
 	gridTop  int          // first visible grid row
 	frame    int
+	wantDL   bool // Start was pressed with a selection; SDL thread only
 }
 
 // Show runs the browse screen until the user leaves it. m must be fresh from
 // browse.New; cs fetches covers (normally the same *api.Client the model
-// reads from). It never blocks the SDL thread on the network: page and cover
-// fetches run on their own goroutines.
-func Show(r *sdl.Renderer, f Fonts, m *browse.Model, cs CoverSource) Outcome {
+// reads from); dl runs the download queue when Start is pressed with a
+// non-empty selection. It never blocks the SDL thread on the network: page and
+// cover fetches run on their own goroutines, and dl owns its own goroutine for
+// the downloads.
+func Show(r *sdl.Renderer, f Fonts, m *browse.Model, cs CoverSource, dl Downloader) Outcome {
 	s := &screen{
-		r: r, f: f, m: m,
+		r: r, f: f, m: m, dl: dl,
 		covers:   newCoverLoader(cs),
 		inflight: map[int]bool{},
 	}
@@ -95,6 +104,12 @@ func Show(r *sdl.Renderer, f Fonts, m *browse.Model, cs CoverSource) Outcome {
 	for {
 		if s.pump() {
 			return Quit
+		}
+		if s.wantDL {
+			s.wantDL = false
+			if sel := m.Selected(); len(sel) > 0 && s.dl(sel) {
+				return Quit
+			}
 		}
 		v := m.View()
 		if v.Unauthorized || s.covers.revoked.Load() {
@@ -126,7 +141,7 @@ func (s *screen) pump() (quit bool) {
 		case *sdl.ControllerButtonEvent:
 			if e.State == sdl.PRESSED {
 				if b, ok := buttonFromController(e.Button); ok {
-					s.start(s.m.Press(b))
+					s.press(b)
 				}
 			}
 		case *sdl.KeyboardEvent:
@@ -140,10 +155,23 @@ func (s *screen) pump() (quit bool) {
 			if e.Repeat != 0 && b != input.Up && b != input.Down && b != input.Left && b != input.Right {
 				continue // holding A must not flip the selection back and forth
 			}
-			s.start(s.m.Press(b))
+			s.press(b)
 		}
 	}
 	return false
+}
+
+// press applies a button. Start is handled here, not in the model: with a
+// selection it asks the main loop to run the download queue; without one it
+// does nothing.
+func (s *screen) press(b input.Button) {
+	if b == input.Start {
+		if len(s.m.Selected()) > 0 {
+			s.wantDL = true
+		}
+		return
+	}
+	s.start(s.m.Press(b))
 }
 
 // buttonFromController maps SDL controller buttons to logical buttons. Guide
@@ -274,6 +302,8 @@ func (s *screen) drawGrid(v browse.View) {
 	switch {
 	case v.Err != "":
 		s.text(s.f.Tiny, v.Err, theme.Pink, 28, screenH-26)
+	case len(s.m.Selected()) > 0:
+		s.text(s.f.Tiny, "A select    Start download    B back", theme.Dimmed, 28, screenH-26)
 	default:
 		s.text(s.f.Tiny, "A select    B back", theme.Dimmed, 28, screenH-26)
 	}

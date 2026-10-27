@@ -17,9 +17,11 @@ import (
 	"github.com/amtypaldos/birdroms-handheld/internal/api"
 	"github.com/amtypaldos/birdroms-handheld/internal/browse"
 	"github.com/amtypaldos/birdroms-handheld/internal/config"
+	"github.com/amtypaldos/birdroms-handheld/internal/download"
 	"github.com/amtypaldos/birdroms-handheld/internal/pair"
 	"github.com/amtypaldos/birdroms-handheld/internal/version"
 	browseui "github.com/amtypaldos/birdroms-handheld/ui/browse"
+	downloadui "github.com/amtypaldos/birdroms-handheld/ui/download"
 	pairui "github.com/amtypaldos/birdroms-handheld/ui/pair"
 )
 
@@ -113,7 +115,17 @@ func run() error {
 			return fmt.Errorf("config after pairing: paired=%v err=%v", cfg.Paired(), err)
 		}
 		client := api.New(cfg.ServerURL, cfg.DeviceToken, &http.Client{Timeout: 10 * time.Second})
-		switch browseui.Show(r, browseui.Fonts{Small: small, Tiny: tiny}, browse.New(client), client) {
+		// Downloads reuse this client (and its 10s timeout). muOS's launch
+		// script exports the ROM card mount; nothing is hardcoded here.
+		romMount := os.Getenv("BIRDROMS_ROM_MOUNT")
+		if romMount == "" {
+			log.Printf("BIRDROMS_ROM_MOUNT is not set; downloads will fail")
+		}
+		dl := func(roms []api.ROM) bool {
+			q := download.New(client, romMount, roms)
+			return downloadui.Show(r, downloadui.Fonts{Small: small, Tiny: tiny}, q) == downloadui.Quit
+		}
+		switch browseui.Show(r, browseui.Fonts{Small: small, Tiny: tiny}, browse.New(client), client, dl) {
 		case browseui.Revoked:
 			// The server no longer knows this device: forget the token and
 			// go back through pairing. The server URL is kept.

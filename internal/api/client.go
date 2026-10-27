@@ -17,6 +17,10 @@ import (
 // i.e. the device token is revoked or unknown. Check with errors.Is.
 var ErrUnauthorized = errors.New("api: unauthorized (device token revoked or unknown)")
 
+// ErrRangeNotSatisfiable is returned (wrapped) when the server answers HTTP 416
+// to a ranged download, e.g. the partial file is already as long as the ROM.
+var ErrRangeNotSatisfiable = errors.New("api: range not satisfiable")
+
 // ROM is a ROM in the device shape returned by the server. SizeBytes and
 // CoverURL are nil when the server reports null.
 type ROM struct {
@@ -139,13 +143,47 @@ func (c *Client) GetCover(coverURL string) ([]byte, error) {
 // after each chunk written with the cumulative number of bytes so far. On any
 // non-2xx response nothing is written to w.
 func (c *Client) DownloadROM(id int, w io.Writer, progressCb func(written int64)) error {
-	resp, err := c.get("/api/roms/"+strconv.Itoa(id)+"/download/", nil)
+	return c.DownloadROMFrom(id, 0, w, progressCb)
+}
+
+// restartable is what a writer must offer so a 200 answer to a ranged request
+// (the server ignored Range) can be written from the start. *os.File has it.
+type restartable interface {
+	io.Seeker
+	Truncate(size int64) error
+}
+
+// DownloadROMFrom streams ROM id into w starting at byte offset, which is the
+// number of bytes w already holds. offset 0 sends no Range header; offset > 0
+// sends "Range: bytes=<offset>-". A 206 appends to w. A 200 means the server
+// ignored the range: w must be restartable (an *os.File); it is truncated and
+// the whole body is written from the start. progress, if non-nil, receives the
+// cumulative size including the offset. On a non-2xx response nothing is
+// written to w.
+func (c *Client) DownloadROMFrom(id int, offset int64, w io.Writer, progress func(written int64)) error {
+	path := "/api/roms/" + strconv.Itoa(id) + "/download/"
+	resp, err := c.doGet(c.base+path, path, "application/json", offset) // same Accept as before B6
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
 
-	cw := &countingWriter{w: w, cb: progressCb}
+	start := offset
+	if offset > 0 && resp.StatusCode == http.StatusOK {
+		rw, ok := w.(restartable)
+		if !ok {
+			return fmt.Errorf("api: download rom %d: server ignored Range and the writer cannot restart", id)
+		}
+		if err := rw.Truncate(0); err != nil {
+			return fmt.Errorf("api: download rom %d: truncate: %w", id, err)
+		}
+		if _, err := rw.Seek(0, io.SeekStart); err != nil {
+			return fmt.Errorf("api: download rom %d: seek: %w", id, err)
+		}
+		start = 0
+	}
+
+	cw := &countingWriter{w: w, cb: progress, total: start}
 	if _, err := io.Copy(cw, resp.Body); err != nil {
 		return fmt.Errorf("api: download rom %d: %w", id, err)
 	}
@@ -197,12 +235,21 @@ func (c *Client) get(path string, q url.Values) (*http.Response, error) {
 // getURL is get for a fully-formed URL. path names the request in errors
 // (the path for API calls; never the URL, which may carry a signed query).
 func (c *Client) getURL(u, path, accept string) (*http.Response, error) {
+	return c.doGet(u, path, accept, 0)
+}
+
+// doGet is getURL with an optional start offset: rangeFrom > 0 adds
+// "Range: bytes=<rangeFrom>-".
+func (c *Client) doGet(u, path, accept string, rangeFrom int64) (*http.Response, error) {
 	req, err := http.NewRequest(http.MethodGet, u, nil)
 	if err != nil {
 		return nil, fmt.Errorf("api: build request %s: %w", path, err)
 	}
 	req.Header.Set("Authorization", "Device "+c.token)
 	req.Header.Set("Accept", accept)
+	if rangeFrom > 0 {
+		req.Header.Set("Range", "bytes="+strconv.FormatInt(rangeFrom, 10)+"-")
+	}
 
 	resp, err := c.hc.Do(req)
 	if err != nil {
@@ -214,6 +261,9 @@ func (c *Client) getURL(u, path, accept string) (*http.Response, error) {
 	defer resp.Body.Close()
 	if resp.StatusCode == http.StatusUnauthorized {
 		return nil, fmt.Errorf("GET %s: %w", path, ErrUnauthorized)
+	}
+	if resp.StatusCode == http.StatusRequestedRangeNotSatisfiable {
+		return nil, fmt.Errorf("GET %s: status 416: %w", path, ErrRangeNotSatisfiable)
 	}
 	snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 200))
 	return nil, fmt.Errorf("api: GET %s: unexpected status %d %s: %s",
