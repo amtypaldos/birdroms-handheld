@@ -41,7 +41,7 @@ type ROMPage struct {
 type Playlist struct {
 	ID        int    `json:"id"`
 	Name      string `json:"name"`
-	CreatedBy string `json:"created_by"`
+	CreatedBy int    `json:"created_by"` // user id, not a username
 	CreatedAt string `json:"created_at"`
 	ROMCount  int    `json:"rom_count"`
 }
@@ -112,6 +112,29 @@ func (c *Client) GetPlaylist(id int) (PlaylistDetail, error) {
 	return out, nil
 }
 
+// MaxCoverBytes caps a cover download; a larger body is an error rather than
+// being buffered whole on a memory-poor handheld.
+const MaxCoverBytes = 4 << 20
+
+// GetCover fetches the image at coverURL, which is absolute (as returned in
+// ROM.CoverURL) and is requested as-is with the device token; the client base
+// URL is never prefixed. Callers must not call it for a nil CoverURL.
+func (c *Client) GetCover(coverURL string) ([]byte, error) {
+	resp, err := c.getURL(coverURL, "cover", "image/*")
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	data, err := io.ReadAll(io.LimitReader(resp.Body, MaxCoverBytes+1))
+	if err != nil {
+		return nil, fmt.Errorf("api: read cover: %w", err)
+	}
+	if len(data) > MaxCoverBytes {
+		return nil, fmt.Errorf("api: cover larger than %d bytes", MaxCoverBytes)
+	}
+	return data, nil
+}
+
 // DownloadROM streams ROM id into w. If progressCb is non-nil it is called
 // after each chunk written with the cumulative number of bytes so far. On any
 // non-2xx response nothing is written to w.
@@ -168,12 +191,18 @@ func (c *Client) get(path string, q url.Values) (*http.Response, error) {
 	if len(q) > 0 {
 		u += "?" + q.Encode()
 	}
+	return c.getURL(u, path, "application/json")
+}
+
+// getURL is get for a fully-formed URL. path names the request in errors
+// (the path for API calls; never the URL, which may carry a signed query).
+func (c *Client) getURL(u, path, accept string) (*http.Response, error) {
 	req, err := http.NewRequest(http.MethodGet, u, nil)
 	if err != nil {
 		return nil, fmt.Errorf("api: build request %s: %w", path, err)
 	}
 	req.Header.Set("Authorization", "Device "+c.token)
-	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Accept", accept)
 
 	resp, err := c.hc.Do(req)
 	if err != nil {

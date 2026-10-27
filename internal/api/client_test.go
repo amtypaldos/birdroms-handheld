@@ -148,8 +148,8 @@ func TestListPlaylists(t *testing.T) {
 			t.Errorf("path = %q", r.URL.Path)
 		}
 		io.WriteString(w, `[
-			{"id": 1, "name": "Road trip", "created_by": "alex", "created_at": "2026-10-01T12:00:00Z", "rom_count": 3},
-			{"id": 2, "name": "Empty", "created_by": "sam", "created_at": "2026-10-02T12:00:00Z", "rom_count": 0}
+			{"id": 1, "name": "Road trip", "created_by": 7, "created_at": "2026-10-01T12:00:00Z", "rom_count": 3},
+			{"id": 2, "name": "Empty", "created_by": 9, "created_at": "2026-10-02T12:00:00Z", "rom_count": 0}
 		]`)
 	})
 	got, err := c.ListPlaylists()
@@ -160,7 +160,7 @@ func TestListPlaylists(t *testing.T) {
 		t.Fatalf("len = %d", len(got))
 	}
 	p := got[0]
-	if p.ID != 1 || p.Name != "Road trip" || p.CreatedBy != "alex" || p.CreatedAt != "2026-10-01T12:00:00Z" || p.ROMCount != 3 {
+	if p.ID != 1 || p.Name != "Road trip" || p.CreatedBy != 7 || p.CreatedAt != "2026-10-01T12:00:00Z" || p.ROMCount != 3 {
 		t.Fatalf("playlist[0] = %+v", p)
 	}
 }
@@ -171,7 +171,7 @@ func TestGetPlaylistKeepsServerROMOrder(t *testing.T) {
 			t.Errorf("path = %q", r.URL.Path)
 		}
 		io.WriteString(w, `{
-			"id": 42, "name": "Road trip", "created_by": "alex", "created_at": "2026-10-01T12:00:00Z", "rom_count": 3,
+			"id": 42, "name": "Road trip", "created_by": 7, "created_at": "2026-10-01T12:00:00Z", "rom_count": 3,
 			"roms": [
 				{"id": 30, "title": "C", "platform": "GBA", "extension": "gba", "size_bytes": 1, "cover_url": null},
 				{"id": 10, "title": "A", "platform": "SFC", "extension": "sfc", "size_bytes": null, "cover_url": "http://x/a.jpg"},
@@ -314,5 +314,78 @@ func TestMalformedJSONIsError(t *testing.T) {
 	})
 	if _, err := c.ListPlaylists(); err == nil {
 		t.Fatal("expected decode error")
+	}
+}
+
+func TestGetCoverFetchesAbsoluteURLWithDeviceAuth(t *testing.T) {
+	img := []byte("\x89PNG-fake-bytes")
+	// The cover lives on a different host than the API base: the client must
+	// request the absolute URL as given, not prefix its own base URL.
+	cover := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got, want := r.Header.Get("Authorization"), "Device "+testToken; got != want {
+			t.Errorf("Authorization = %q, want %q", got, want)
+		}
+		if r.Method != http.MethodGet {
+			t.Errorf("method = %s", r.Method)
+		}
+		if r.URL.RequestURI() != "/media/covers/7.jpg?v=2" {
+			t.Errorf("request uri = %q", r.URL.RequestURI())
+		}
+		w.Write(img)
+	}))
+	defer cover.Close()
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("API base server must not be hit for an absolute cover url: %s", r.URL)
+	}))
+	defer api.Close()
+
+	c := New(api.URL, testToken, nil)
+	got, err := c.GetCover(cover.URL + "/media/covers/7.jpg?v=2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, img) {
+		t.Fatalf("got %q", got)
+	}
+}
+
+func TestGetCoverUnauthorizedIsSentinel(t *testing.T) {
+	c, srv := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "no", http.StatusUnauthorized)
+	})
+	if _, err := c.GetCover(srv.URL + "/c.jpg"); !errors.Is(err, ErrUnauthorized) {
+		t.Fatalf("err = %v, want ErrUnauthorized", err)
+	}
+}
+
+func TestGetCoverOtherStatusIsError(t *testing.T) {
+	c, srv := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		http.NotFound(w, r)
+	})
+	_, err := c.GetCover(srv.URL + "/c.jpg")
+	if err == nil || errors.Is(err, ErrUnauthorized) || !strings.Contains(err.Error(), "404") {
+		t.Fatalf("err = %v, want ordinary error mentioning 404", err)
+	}
+}
+
+func TestGetCoverRejectsOversizeBody(t *testing.T) {
+	c, srv := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Write(bytes.Repeat([]byte("x"), MaxCoverBytes+1))
+	})
+	if _, err := c.GetCover(srv.URL + "/big.jpg"); err == nil {
+		t.Fatal("expected an error for a body over MaxCoverBytes")
+	}
+}
+
+func TestListPlaylistsCreatedByIsNumber(t *testing.T) {
+	c, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		io.WriteString(w, `[{"id": 1, "name": "x", "created_by": 7, "created_at": "t", "rom_count": 0}]`)
+	})
+	got, err := c.ListPlaylists()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].CreatedBy != 7 {
+		t.Fatalf("got %+v", got)
 	}
 }
