@@ -1,0 +1,5 @@
+/sysroot/
+/dist/
+*.log
+.DS_Store
+._*
