@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"runtime"
 
 	"github.com/veandco/go-sdl2/sdl"
 	"github.com/veandco/go-sdl2/ttf"
 
+	"github.com/amtypaldos/birdroms-handheld/internal/input"
 	"github.com/amtypaldos/birdroms-handheld/internal/version"
 )
 
@@ -45,8 +47,13 @@ func run() error {
 	}
 	defer ttf.Quit()
 
+	// On the handheld (linux) take the whole screen; on a dev machine use a 640x480 window.
+	flags := uint32(sdl.WINDOW_SHOWN)
+	if runtime.GOOS == "linux" {
+		flags |= sdl.WINDOW_FULLSCREEN_DESKTOP
+	}
 	win, err := sdl.CreateWindow("birdROMs", sdl.WINDOWPOS_UNDEFINED, sdl.WINDOWPOS_UNDEFINED,
-		screenW, screenH, sdl.WINDOW_SHOWN|sdl.WINDOW_FULLSCREEN_DESKTOP)
+		screenW, screenH, flags)
 	if err != nil {
 		return fmt.Errorf("window: %w", err)
 	}
@@ -103,7 +110,13 @@ func run() error {
 				last = fmt.Sprintf("hat value %d", e.Value)
 			case *sdl.KeyboardEvent:
 				if e.Type == sdl.KEYDOWN {
-					log.Printf("key %s", sdl.GetKeyName(e.Keysym.Sym))
+					if b, ok := input.FromKeyName(sdl.GetKeyName(e.Keysym.Sym)); ok {
+						last = "button: " + b.String()
+						log.Printf("key -> %s", b)
+						if b == input.B || b == input.Start || b == input.Menu {
+							return nil
+						}
+					}
 				}
 			}
 		}
