@@ -2,21 +2,30 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"runtime"
+	"time"
 
 	"github.com/veandco/go-sdl2/sdl"
 	"github.com/veandco/go-sdl2/ttf"
 
+	"github.com/amtypaldos/birdroms-handheld/internal/config"
 	"github.com/amtypaldos/birdroms-handheld/internal/input"
+	"github.com/amtypaldos/birdroms-handheld/internal/pair"
 	"github.com/amtypaldos/birdroms-handheld/internal/version"
+	pairui "github.com/amtypaldos/birdroms-handheld/ui/pair"
 )
 
 const (
 	screenW, screenH = 640, 480
 	fontPath         = "assets/fonts/ChakraPetch-Bold.ttf"
+	// configPath is relative to the working directory: mux_launch.sh cds to the app dir.
+	configPath = "config.json"
 )
 
 var (
@@ -77,6 +86,11 @@ func run() error {
 		return fmt.Errorf("font: %w", err)
 	}
 	defer small.Close()
+	mid, err := ttf.OpenFont(fontPath, 34)
+	if err != nil {
+		return fmt.Errorf("font: %w", err)
+	}
+	defer mid.Close()
 
 	for i := 0; i < sdl.NumJoysticks(); i++ {
 		if sdl.IsGameController(i) {
@@ -84,6 +98,14 @@ func run() error {
 				log.Printf("controller %d: %s", i, c.Name())
 			}
 		}
+	}
+
+	fonts := pairui.Fonts{Big: big, Mid: mid, Small: small}
+	switch firstRun(r, fonts) {
+	case pairui.Paired:
+		log.Printf("paired")
+	case pairui.Cancelled, pairui.Quit:
+		return nil
 	}
 
 	last := "press a button"
@@ -129,6 +151,32 @@ func run() error {
 		r.Present()
 		sdl.Delay(16)
 	}
+}
+
+// firstRun makes sure the device is paired before the app proper starts. It
+// returns Paired when a token is already stored or pairing just succeeded.
+func firstRun(r *sdl.Renderer, f pairui.Fonts) pairui.Outcome {
+	cfg, err := config.Load(configPath)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		log.Printf("config: %v", err)
+		return pairui.Message(r, f, "config.json is unreadable.", "Fix or delete it, then retry.")
+	}
+	if cfg.Paired() {
+		return pairui.Paired
+	}
+	server := pair.ResolveServer(os.Getenv("BIRDROMS_SERVER"), cfg)
+	if server == "" {
+		return pairui.Message(r, f, "No server configured.", "Set BIRDROMS_SERVER (or server_url", "in config.json) and relaunch.")
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	tr := pair.NewTracker()
+	go pair.Run(ctx, pair.Options{
+		BaseURL:    server,
+		ConfigPath: configPath,
+		Client:     &http.Client{Timeout: 10 * time.Second},
+	}, tr)
+	return pairui.Show(r, f, tr, cancel)
 }
 
 func drawText(r *sdl.Renderer, f *ttf.Font, s string, c sdl.Color, x, y int32) {
