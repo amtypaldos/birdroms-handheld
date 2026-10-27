@@ -108,3 +108,25 @@ func TestPaired(t *testing.T) {
 		t.Fatal("full config not paired")
 	}
 }
+
+func TestSaveFailsWhenParentIsAFile(t *testing.T) {
+	root := t.TempDir()
+	parent := filepath.Join(root, "notadir")
+	if err := os.WriteFile(parent, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	dest := filepath.Join(parent, "birdroms.json")
+	if err := Save(dest, Config{ServerURL: "https://x", DeviceToken: "t"}); err == nil {
+		t.Fatal("Save under a file parent returned nil")
+	}
+	if b, _ := os.ReadFile(parent); string(b) != "x" {
+		t.Fatalf("parent file changed: %q", b)
+	}
+	if _, err := os.Stat(dest); err == nil {
+		t.Fatal("a config was created at the destination")
+	}
+	entries, _ := os.ReadDir(root)
+	if len(entries) != 1 {
+		t.Fatalf("leftover files: %v", entries)
+	}
+}

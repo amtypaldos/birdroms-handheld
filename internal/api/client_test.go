@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"io"
 	"net/http"
@@ -209,7 +210,7 @@ func TestDownloadROMStreamsBytesAndReportsProgress(t *testing.T) {
 
 	var buf bytes.Buffer
 	var calls []int64
-	err := c.DownloadROM(9, &buf, func(n int64) { calls = append(calls, n) })
+	err := c.DownloadROM(context.Background(), 9, &buf, func(n int64) { calls = append(calls, n) })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -234,7 +235,7 @@ func TestDownloadROMNilCallbackAllowed(t *testing.T) {
 		io.WriteString(w, "rom-bytes")
 	})
 	var buf bytes.Buffer
-	if err := c.DownloadROM(1, &buf, nil); err != nil {
+	if err := c.DownloadROM(context.Background(), 1, &buf, nil); err != nil {
 		t.Fatal(err)
 	}
 	if buf.String() != "rom-bytes" {
@@ -247,7 +248,7 @@ func TestDownloadROMErrorWritesNothing(t *testing.T) {
 		http.Error(w, "not found body", http.StatusNotFound)
 	})
 	var buf bytes.Buffer
-	err := c.DownloadROM(1, &buf, nil)
+	err := c.DownloadROM(context.Background(), 1, &buf, nil)
 	if err == nil || !strings.Contains(err.Error(), "404") {
 		t.Fatalf("err = %v, want one mentioning 404", err)
 	}
@@ -266,7 +267,7 @@ func TestUnauthorizedIsSentinelOnEveryCall(t *testing.T) {
 		"ListROMs":      func() error { _, err := c.ListROMs("GBA", 1); return err },
 		"ListPlaylists": func() error { _, err := c.ListPlaylists(); return err },
 		"GetPlaylist":   func() error { _, err := c.GetPlaylist(1); return err },
-		"DownloadROM":   func() error { return c.DownloadROM(1, &sink, nil) },
+		"DownloadROM":   func() error { return c.DownloadROM(context.Background(), 1, &sink, nil) },
 	}
 	for name, call := range calls {
 		if err := call(); !errors.Is(err, ErrUnauthorized) {
@@ -317,11 +318,11 @@ func TestMalformedJSONIsError(t *testing.T) {
 	}
 }
 
-func TestGetCoverFetchesAbsoluteURLWithDeviceAuth(t *testing.T) {
+func TestGetCoverFetchesAbsoluteURLWithDeviceAuthOnSameHost(t *testing.T) {
 	img := []byte("\x89PNG-fake-bytes")
-	// The cover lives on a different host than the API base: the client must
-	// request the absolute URL as given, not prefix its own base URL.
-	cover := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	var hits int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits++
 		if got, want := r.Header.Get("Authorization"), "Device "+testToken; got != want {
 			t.Errorf("Authorization = %q, want %q", got, want)
 		}
@@ -333,13 +334,37 @@ func TestGetCoverFetchesAbsoluteURLWithDeviceAuth(t *testing.T) {
 		}
 		w.Write(img)
 	}))
+	defer srv.Close()
+
+	c := New(srv.URL, testToken, nil)
+	got, err := c.GetCover(srv.URL + "/media/covers/7.jpg?v=2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, img) || hits != 1 {
+		t.Fatalf("got %q, hits %d", got, hits)
+	}
+}
+
+func TestGetCoverOnOtherHostIsFetchedWithoutTheToken(t *testing.T) {
+	img := []byte("\x89PNG-fake-bytes")
+	// A second httptest server is a different host:port, even on 127.0.0.1.
+	cover := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("Authorization"); got != "" {
+			t.Errorf("foreign host saw Authorization %q", got)
+		}
+		if r.URL.RequestURI() != "/media/covers/7.jpg?v=2" {
+			t.Errorf("request uri = %q", r.URL.RequestURI())
+		}
+		w.Write(img)
+	}))
 	defer cover.Close()
-	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	apiSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Errorf("API base server must not be hit for an absolute cover url: %s", r.URL)
 	}))
-	defer api.Close()
+	defer apiSrv.Close()
 
-	c := New(api.URL, testToken, nil)
+	c := New(apiSrv.URL, testToken, nil)
 	got, err := c.GetCover(cover.URL + "/media/covers/7.jpg?v=2")
 	if err != nil {
 		t.Fatal(err)

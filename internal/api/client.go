@@ -3,6 +3,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -121,10 +122,12 @@ func (c *Client) GetPlaylist(id int) (PlaylistDetail, error) {
 const MaxCoverBytes = 4 << 20
 
 // GetCover fetches the image at coverURL, which is absolute (as returned in
-// ROM.CoverURL) and is requested as-is with the device token; the client base
-// URL is never prefixed. Callers must not call it for a nil CoverURL.
+// ROM.CoverURL) and is requested as-is; the client base URL is never
+// prefixed. The device token is sent only when coverURL is on the same host
+// (including port) as the API base URL; a cover anywhere else is fetched with
+// no Authorization header. Callers must not call it for a nil CoverURL.
 func (c *Client) GetCover(coverURL string) ([]byte, error) {
-	resp, err := c.getURL(coverURL, "cover", "image/*")
+	resp, err := c.doGet(context.Background(), coverURL, "cover", "image/*", 0, c.sameHost(coverURL))
 	if err != nil {
 		return nil, err
 	}
@@ -141,9 +144,10 @@ func (c *Client) GetCover(coverURL string) ([]byte, error) {
 
 // DownloadROM streams ROM id into w. If progressCb is non-nil it is called
 // after each chunk written with the cumulative number of bytes so far. On any
-// non-2xx response nothing is written to w.
-func (c *Client) DownloadROM(id int, w io.Writer, progressCb func(written int64)) error {
-	return c.DownloadROMFrom(id, 0, w, progressCb)
+// non-2xx response nothing is written to w. Cancelling ctx aborts the request,
+// including before the first byte arrives.
+func (c *Client) DownloadROM(ctx context.Context, id int, w io.Writer, progressCb func(written int64)) error {
+	return c.DownloadROMFrom(ctx, id, 0, w, progressCb)
 }
 
 // restartable is what a writer must offer so a 200 answer to a ranged request
@@ -157,16 +161,25 @@ type restartable interface {
 // number of bytes w already holds. offset 0 sends no Range header; offset > 0
 // sends "Range: bytes=<offset>-". A 206 appends to w. A 200 means the server
 // ignored the range: w must be restartable (an *os.File); it is truncated and
-// the whole body is written from the start. progress, if non-nil, receives the
-// cumulative size including the offset. On a non-2xx response nothing is
-// written to w.
-func (c *Client) DownloadROMFrom(id int, offset int64, w io.Writer, progress func(written int64)) error {
+// the whole body is written from the start. A 206 must carry a Content-Range
+// that starts at offset; otherwise it is an error and nothing is written.
+// progress, if non-nil, receives the cumulative size including the offset. On
+// a non-2xx response nothing is written to w. Cancelling ctx aborts the
+// request, including before the first byte arrives.
+func (c *Client) DownloadROMFrom(ctx context.Context, id int, offset int64, w io.Writer, progress func(written int64)) error {
 	path := "/api/roms/" + strconv.Itoa(id) + "/download/"
-	resp, err := c.doGet(c.base+path, path, "application/json", offset) // same Accept as before B6
+	resp, err := c.doGet(ctx, c.base+path, path, "application/json", offset, true) // same Accept as before B6
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusPartialContent {
+		if got, ok := contentRangeStart(resp.Header.Get("Content-Range")); !ok || got != offset {
+			return fmt.Errorf("api: download rom %d: 206 Content-Range %q does not start at offset %d",
+				id, resp.Header.Get("Content-Range"), offset)
+		}
+	}
 
 	start := offset
 	if offset > 0 && resp.StatusCode == http.StatusOK {
@@ -188,6 +201,32 @@ func (c *Client) DownloadROMFrom(id int, offset int64, w io.Writer, progress fun
 		return fmt.Errorf("api: download rom %d: %w", id, err)
 	}
 	return nil
+}
+
+// contentRangeStart returns the first byte of a "bytes <start>-<end>/<size>"
+// Content-Range value.
+func contentRangeStart(h string) (int64, bool) {
+	rest, ok := strings.CutPrefix(strings.TrimSpace(h), "bytes ")
+	if !ok {
+		return 0, false
+	}
+	first, _, ok := strings.Cut(rest, "-")
+	if !ok {
+		return 0, false
+	}
+	n, err := strconv.ParseInt(strings.TrimSpace(first), 10, 64)
+	if err != nil || n < 0 {
+		return 0, false
+	}
+	return n, true
+}
+
+// sameHost reports whether u is on the same host (including port) as the API
+// base URL.
+func (c *Client) sameHost(u string) bool {
+	a, err1 := url.Parse(u)
+	b, err2 := url.Parse(c.base)
+	return err1 == nil && err2 == nil && a.Host != "" && strings.EqualFold(a.Host, b.Host)
 }
 
 // countingWriter forwards writes to w and reports the running total to cb.
@@ -229,23 +268,21 @@ func (c *Client) get(path string, q url.Values) (*http.Response, error) {
 	if len(q) > 0 {
 		u += "?" + q.Encode()
 	}
-	return c.getURL(u, path, "application/json")
+	return c.doGet(context.Background(), u, path, "application/json", 0, true)
 }
 
-// getURL is get for a fully-formed URL. path names the request in errors
+// doGet issues a GET for a fully-formed URL. path names the request in errors
 // (the path for API calls; never the URL, which may carry a signed query).
-func (c *Client) getURL(u, path, accept string) (*http.Response, error) {
-	return c.doGet(u, path, accept, 0)
-}
-
-// doGet is getURL with an optional start offset: rangeFrom > 0 adds
-// "Range: bytes=<rangeFrom>-".
-func (c *Client) doGet(u, path, accept string, rangeFrom int64) (*http.Response, error) {
-	req, err := http.NewRequest(http.MethodGet, u, nil)
+// rangeFrom > 0 adds "Range: bytes=<rangeFrom>-". The device token is sent
+// only when sendAuth is true.
+func (c *Client) doGet(ctx context.Context, u, path, accept string, rangeFrom int64, sendAuth bool) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
 		return nil, fmt.Errorf("api: build request %s: %w", path, err)
 	}
-	req.Header.Set("Authorization", "Device "+c.token)
+	if sendAuth {
+		req.Header.Set("Authorization", "Device "+c.token)
+	}
 	req.Header.Set("Accept", accept)
 	if rangeFrom > 0 {
 		req.Header.Set("Range", "bytes="+strconv.FormatInt(rangeFrom, 10)+"-")
