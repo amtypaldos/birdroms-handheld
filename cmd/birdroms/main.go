@@ -115,14 +115,16 @@ func run() error {
 			return fmt.Errorf("config after pairing: paired=%v err=%v", cfg.Paired(), err)
 		}
 		client := api.New(cfg.ServerURL, cfg.DeviceToken, &http.Client{Timeout: 10 * time.Second})
-		// Downloads reuse this client (and its 10s timeout). muOS's launch
+		// Downloads use their own client (same server and token) with no
+		// overall timeout; browse keeps the 10s one above. muOS's launch
 		// script exports the ROM card mount; nothing is hardcoded here.
 		romMount := os.Getenv("BIRDROMS_ROM_MOUNT")
 		if romMount == "" {
 			log.Printf("BIRDROMS_ROM_MOUNT is not set; downloads will fail")
 		}
+		dlClient := api.New(cfg.ServerURL, cfg.DeviceToken, download.HTTPClient())
 		dl := func(roms []api.ROM) bool {
-			q := download.New(client, romMount, roms)
+			q := download.New(dlClient, romMount, roms)
 			return downloadui.Show(r, downloadui.Fonts{Small: small, Tiny: tiny}, q) == downloadui.Quit
 		}
 		switch browseui.Show(r, browseui.Fonts{Small: small, Tiny: tiny}, browse.New(client), client, dl) {
