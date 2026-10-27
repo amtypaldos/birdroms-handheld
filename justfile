@@ -24,6 +24,19 @@ deploy: build
     SSHPASS=${SSHPASS:-root} sshpass -e scp package/mux_launch.sh package/mux_lang.ini root@muos.local:/mnt/mmc/MUOS/application/birdROMs/
     SSHPASS=${SSHPASS:-root} sshpass -e ssh root@muos.local 'chmod +x /mnt/mmc/MUOS/application/birdROMs/mux_launch.sh /mnt/mmc/MUOS/application/birdROMs/birdroms && sync'
 
+# Build dist/birdROMs.muxapp (install via the muOS Archive Manager). Needs the same toolchain as `build`.
+package: build
+    #!/usr/bin/env bash
+    set -euo pipefail
+    stage="$(mktemp -d)"
+    trap 'rm -rf "$stage"' EXIT
+    app="$stage/application/birdROMs"
+    mkdir -p "$app/assets/fonts"
+    cp dist/birdroms package/mux_launch.sh package/mux_lang.ini "$app/"
+    cp assets/fonts/ChakraPetch-Bold.ttf "$app/assets/fonts/"
+    go run ./cmd/mkmuxapp "$stage" dist/birdROMs.muxapp
+    echo "wrote dist/birdROMs.muxapp"
+
 # Run natively on this machine (needs `brew install sdl2 sdl2_ttf pkgconf`); keys: arrows, Z/X=A/B, A/S=X/Y, Q/W=L1/R1, Enter=Start, Esc=Menu.
 run:
     go run ./cmd/birdroms
