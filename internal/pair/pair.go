@@ -161,7 +161,7 @@ type Options struct {
 
 // Loop runs the pairing state machine: Start, show (via OnSession), poll
 // until approved, then persist {ServerURL, DeviceToken} with config.Save and
-// return it. A 410 or local time past expires_at restarts once; a second
+// return it. A 410 or a session older than its local TTL restarts once; a second
 // expiry returns ErrExpired. 429 backs off on the same code. 404/400 and other
 // client errors stop. Three consecutive transient failures return the last
 // error without restarting. Cancelling ctx stops with ctx.Err().
@@ -185,6 +185,8 @@ func Loop(ctx context.Context, o Options) (config.Config, error) {
 
 	var (
 		sess     Session
+		receipt  time.Time     // now() when sess arrived
+		ttl      time.Duration // local lifetime of sess, from receipt
 		have     bool
 		restarts int
 		fails    int
@@ -218,12 +220,17 @@ func Loop(ctx context.Context, o Options) (config.Config, error) {
 			}
 			fails = 0
 			sess, have = s, true
+			receipt = now()
+			ttl = localTTL(s.ExpiresAt.Sub(receipt))
 			if o.OnSession != nil {
 				o.OnSession(sess)
 			}
 		}
 
-		if !now().Before(sess.ExpiresAt) {
+		// Expiry is measured on the device's own clock since receipt, never by
+		// comparing against the server's wall-clock expires_at, so a skewed
+		// handheld clock cannot expire a fresh code.
+		if now().Sub(receipt) >= ttl {
 			if restarts >= maxRestartsOnError {
 				return config.Config{}, ErrExpired
 			}
@@ -263,6 +270,16 @@ func Loop(ctx context.Context, o Options) (config.Config, error) {
 			sleep(pollInterval)
 		}
 	}
+}
+
+// localTTL turns the server-advertised remaining lifetime into the local one.
+// A value that is non-positive or implausibly long (more than 10 minutes)
+// means the device and server clocks disagree, so use the server's 5 minute TTL.
+func localTTL(advertised time.Duration) time.Duration {
+	if advertised <= 0 || advertised > 10*time.Minute {
+		return 5 * time.Minute
+	}
+	return advertised
 }
 
 // retryable reports whether err is a transport error or a 5xx, i.e. worth

@@ -167,6 +167,16 @@ func dots(frame int) string {
 	return "...."[:n]
 }
 
+// isCancelButton reports whether a controller button backs out of the screen:
+// B, Start, and Guide (the muOS menu button, guide:b12 on the RG40XX-V).
+func isCancelButton(b uint8) bool {
+	switch sdl.GameControllerButton(b) {
+	case sdl.CONTROLLER_BUTTON_B, sdl.CONTROLLER_BUTTON_START, sdl.CONTROLLER_BUTTON_GUIDE:
+		return true
+	}
+	return false
+}
+
 // pollCancel drains pending events and reports whether a cancel button was
 // pressed or the window was closed.
 func pollCancel() (cancelled, quit bool) {
@@ -175,8 +185,7 @@ func pollCancel() (cancelled, quit bool) {
 		case *sdl.QuitEvent:
 			return false, true
 		case *sdl.ControllerButtonEvent:
-			if e.State == sdl.PRESSED &&
-				(e.Button == sdl.CONTROLLER_BUTTON_START || e.Button == sdl.CONTROLLER_BUTTON_B) {
+			if e.State == sdl.PRESSED && isCancelButton(e.Button) {
 				cancelled = true
 			}
 		case *sdl.KeyboardEvent:
