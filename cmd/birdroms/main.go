@@ -14,10 +14,12 @@ import (
 	"github.com/veandco/go-sdl2/sdl"
 	"github.com/veandco/go-sdl2/ttf"
 
+	"github.com/amtypaldos/birdroms-handheld/internal/api"
+	"github.com/amtypaldos/birdroms-handheld/internal/browse"
 	"github.com/amtypaldos/birdroms-handheld/internal/config"
-	"github.com/amtypaldos/birdroms-handheld/internal/input"
 	"github.com/amtypaldos/birdroms-handheld/internal/pair"
 	"github.com/amtypaldos/birdroms-handheld/internal/version"
+	browseui "github.com/amtypaldos/birdroms-handheld/ui/browse"
 	pairui "github.com/amtypaldos/birdroms-handheld/ui/pair"
 )
 
@@ -26,13 +28,6 @@ const (
 	fontPath         = "assets/fonts/ChakraPetch-Bold.ttf"
 	// configPath is relative to the working directory: mux_launch.sh cds to the app dir.
 	configPath = "config.json"
-)
-
-var (
-	bg     = sdl.Color{R: 0x0b, G: 0x0d, B: 0x17, A: 255}
-	neon   = sdl.Color{R: 0x00, G: 0xf0, B: 0xff, A: 255}
-	pink   = sdl.Color{R: 0xff, G: 0x2d, B: 0x95, A: 255}
-	dimmed = sdl.Color{R: 0x8a, G: 0x90, B: 0xa8, A: 255}
 )
 
 func main() {
@@ -91,6 +86,11 @@ func run() error {
 		return fmt.Errorf("font: %w", err)
 	}
 	defer mid.Close()
+	tiny, err := ttf.OpenFont(fontPath, 15)
+	if err != nil {
+		return fmt.Errorf("font: %w", err)
+	}
+	defer tiny.Close()
 
 	for i := 0; i < sdl.NumJoysticks(); i++ {
 		if sdl.IsGameController(i) {
@@ -101,55 +101,30 @@ func run() error {
 	}
 
 	fonts := pairui.Fonts{Big: big, Mid: mid, Small: small}
-	switch firstRun(r, fonts) {
-	case pairui.Paired:
-		log.Printf("paired")
-	case pairui.Cancelled, pairui.Quit:
-		return nil
-	}
-
-	last := "press a button"
 	for {
-		for ev := sdl.PollEvent(); ev != nil; ev = sdl.PollEvent() {
-			switch e := ev.(type) {
-			case *sdl.QuitEvent:
-				return nil
-			case *sdl.ControllerButtonEvent:
-				if e.State == sdl.PRESSED {
-					name := sdl.GameControllerGetStringForButton(sdl.GameControllerButton(e.Button))
-					last = "button: " + name
-					log.Printf("controller button %d (%s)", e.Button, name)
-					if e.Button == sdl.CONTROLLER_BUTTON_START || e.Button == sdl.CONTROLLER_BUTTON_B {
-						return nil
-					}
-				}
-			case *sdl.JoyButtonEvent:
-				if e.State == sdl.PRESSED {
-					log.Printf("joy button %d", e.Button)
-				}
-			case *sdl.JoyHatEvent:
-				log.Printf("joy hat %d value %d", e.Hat, e.Value)
-				last = fmt.Sprintf("hat value %d", e.Value)
-			case *sdl.KeyboardEvent:
-				if e.Type == sdl.KEYDOWN {
-					if b, ok := input.FromKeyName(sdl.GetKeyName(e.Keysym.Sym)); ok {
-						last = "button: " + b.String()
-						log.Printf("key -> %s", b)
-						if b == input.B || b == input.Start || b == input.Menu {
-							return nil
-						}
-					}
-				}
-			}
+		// Pair first if needed; once paired, go straight to browse.
+		switch firstRun(r, fonts) {
+		case pairui.Paired:
+		case pairui.Cancelled, pairui.Quit:
+			return nil
 		}
-		r.SetDrawColor(bg.R, bg.G, bg.B, 255)
-		r.Clear()
-		drawText(r, big, "birdROMs", neon, 40, 150)
-		drawText(r, small, version.String(), dimmed, 44, 230)
-		drawText(r, small, last, pink, 44, 300)
-		drawText(r, small, "B / START to exit", dimmed, 44, 420)
-		r.Present()
-		sdl.Delay(16)
+		cfg, err := config.Load(configPath)
+		if err != nil || !cfg.Paired() {
+			return fmt.Errorf("config after pairing: paired=%v err=%v", cfg.Paired(), err)
+		}
+		client := api.New(cfg.ServerURL, cfg.DeviceToken, &http.Client{Timeout: 10 * time.Second})
+		switch browseui.Show(r, browseui.Fonts{Small: small, Tiny: tiny}, browse.New(client), client) {
+		case browseui.Revoked:
+			// The server no longer knows this device: forget the token and
+			// go back through pairing. The server URL is kept.
+			log.Printf("device token rejected; re-pairing")
+			cfg.DeviceToken = ""
+			if err := config.Save(configPath, cfg); err != nil {
+				return fmt.Errorf("clear revoked token: %w", err)
+			}
+		default:
+			return nil
+		}
 	}
 }
 
@@ -177,18 +152,4 @@ func firstRun(r *sdl.Renderer, f pairui.Fonts) pairui.Outcome {
 		Client:     &http.Client{Timeout: 10 * time.Second},
 	}, tr)
 	return pairui.Show(r, f, tr, cancel)
-}
-
-func drawText(r *sdl.Renderer, f *ttf.Font, s string, c sdl.Color, x, y int32) {
-	surf, err := f.RenderUTF8Blended(s, c)
-	if err != nil {
-		return
-	}
-	defer surf.Free()
-	tex, err := r.CreateTextureFromSurface(surf)
-	if err != nil {
-		return
-	}
-	defer tex.Destroy()
-	r.Copy(tex, nil, &sdl.Rect{X: x, Y: y, W: surf.W, H: surf.H})
 }
