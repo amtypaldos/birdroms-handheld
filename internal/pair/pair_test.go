@@ -53,6 +53,11 @@ func (f *fakeServer) handle(w http.ResponseWriter, r *http.Request) {
 	f.authSeen = append(f.authSeen, r.Header.Get("Authorization"))
 	switch {
 	case r.Method == http.MethodPost && r.URL.Path == "/api/devices/pair/start":
+		if f.starts >= len(f.codes) {
+			f.t.Errorf("unexpected extra start (only %d codes scripted)", len(f.codes))
+			http.Error(w, "unexpected", http.StatusInternalServerError)
+			return
+		}
 		code := f.codes[f.starts]
 		f.starts++
 		w.Header().Set("Content-Type", "application/json")
@@ -188,23 +193,25 @@ func TestLoopSecondExpiryReturnsErrExpiredNoToken(t *testing.T) {
 	assertNoConfig(t, path)
 }
 
-func TestLoopLocalExpiryRestartsWithoutPolling(t *testing.T) {
-	f := newFakeServer(t, []string{"C1", "C2"}, map[string][]pollReply{
-		"C2": {approved()},
+// fakeClock is an injectable clock whose sleep advances it by step per call.
+type fakeClock struct {
+	cur  time.Time
+	step time.Duration
+}
+
+func (c *fakeClock) now() time.Time      { return c.cur }
+func (c *fakeClock) sleep(time.Duration) { c.cur = c.cur.Add(c.step) }
+
+func TestLoopAheadClockStillPollsThenSucceeds(t *testing.T) {
+	// The device clock is an hour ahead of the server's expires_at. A wall
+	// clock comparison would call the session expired before any poll.
+	f := newFakeServer(t, []string{"C1"}, map[string][]pollReply{
+		"C1": {pending(), approved()},
 	})
 	opts, _ := f.opts(t, &recorder{})
-	// Clock far in the future: C1's expires_at is already past locally.
-	// The same clock applies to C2, so give C2 a fresh window by moving the
-	// clock back after the first Start.
-	base := time.Now()
-	calls := 0
-	opts.Now = func() time.Time {
-		calls++
-		if calls <= 1 { // first expiry check, on C1
-			return base.Add(time.Hour)
-		}
-		return base
-	}
+	clk := &fakeClock{cur: time.Now().Add(time.Hour), step: time.Second}
+	opts.Now, opts.Sleep = clk.now, clk.sleep
+
 	cfg, err := Loop(context.Background(), opts)
 	if err != nil {
 		t.Fatalf("Loop: %v", err)
@@ -212,12 +219,57 @@ func TestLoopLocalExpiryRestartsWithoutPolling(t *testing.T) {
 	if cfg.DeviceToken != fakeToken {
 		t.Fatalf("cfg = %+v", cfg)
 	}
-	if f.pollCount["C1"] != 0 {
-		t.Fatalf("polled locally-expired code %d times", f.pollCount["C1"])
+	if f.pollCount["C1"] < 1 {
+		t.Fatalf("code never polled; polls = %d", f.pollCount["C1"])
+	}
+	if f.starts != 1 {
+		t.Fatalf("starts = %d, want 1", f.starts)
+	}
+}
+
+func TestLoopLocalTTLExpiryRestartsOnceAndStopsPollingOldCode(t *testing.T) {
+	// Each sleep advances the clock 3 minutes: C1 is polled at t=0 and t=3m,
+	// then is past the 5 minute fallback TTL at t=6m and must be abandoned.
+	f := newFakeServer(t, []string{"C1", "C2"}, map[string][]pollReply{
+		"C1": {pending(), pending()},
+		"C2": {approved()},
+	})
+	opts, _ := f.opts(t, &recorder{})
+	clk := &fakeClock{cur: time.Now().Add(time.Hour), step: 3 * time.Minute}
+	opts.Now, opts.Sleep = clk.now, clk.sleep
+
+	cfg, err := Loop(context.Background(), opts)
+	if err != nil {
+		t.Fatalf("Loop: %v", err)
+	}
+	if cfg.DeviceToken != fakeToken {
+		t.Fatalf("cfg = %+v", cfg)
+	}
+	if f.pollCount["C1"] != 2 {
+		t.Fatalf("C1 polls = %d, want 2 (no polling after local expiry)", f.pollCount["C1"])
 	}
 	if f.starts != 2 {
 		t.Fatalf("starts = %d, want 2", f.starts)
 	}
+}
+
+func TestLoopSecondLocalExpiryReturnsErrExpired(t *testing.T) {
+	f := newFakeServer(t, []string{"C1", "C2"}, map[string][]pollReply{
+		"C1": {pending(), pending()},
+		"C2": {pending(), pending()},
+	})
+	opts, path := f.opts(t, &recorder{})
+	clk := &fakeClock{cur: time.Now(), step: 3 * time.Minute}
+	opts.Now, opts.Sleep = clk.now, clk.sleep
+
+	_, err := Loop(context.Background(), opts)
+	if !errors.Is(err, ErrExpired) {
+		t.Fatalf("err = %v, want ErrExpired", err)
+	}
+	if f.starts != 2 {
+		t.Fatalf("starts = %d, want exactly 2", f.starts)
+	}
+	assertNoConfig(t, path)
 }
 
 func TestLoopRateLimitedBacksOffSameCode(t *testing.T) {
