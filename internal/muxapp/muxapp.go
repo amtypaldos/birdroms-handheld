@@ -13,10 +13,11 @@ import (
 	"strings"
 )
 
-// Prefix is the folder every entry must live under. The top-level
-// "application/" is the muOS archive shortcut that extracts into the
-// application store (/mnt/mmc/MUOS/application/ on the RG40XX-V).
-const Prefix = "application/birdROMs/"
+// Prefix is the folder every entry must live under. muOS 2606 runs
+// `unzip -o <archive> -d $MUOS_STORE_DIR/application` for a .muxapp (see
+// /opt/muos/script/mux/extract.sh) with no prefix stripping, so the app folder
+// itself is the archive root: it lands in /mnt/mmc/MUOS/application/birdROMs/.
+const Prefix = "birdROMs/"
 
 var requiredEntries = []string{
 	Prefix + "mux_launch.sh",

@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-const prefix = "application/birdROMs/"
+const prefix = "birdROMs/"
 
 var required = []string{
 	prefix + "assets/fonts/ChakraPetch-Bold.ttf",
@@ -97,7 +97,7 @@ func TestBuildRejectsUnsafeNamesAndWritesNoZip(t *testing.T) {
 		"dotdot in name":    prefix + "evil..name",
 		"dotdot dir":        prefix + "a../b",
 		"outside prefix":    "stray.txt",
-		"other app folder":  "application/other/mux_launch.sh",
+		"other app folder":  "other/mux_launch.sh",
 		"backslash in name": prefix + `bad\name`,
 	}
 	for label, name := range cases {
@@ -131,7 +131,7 @@ func TestBuildRejectsMissingRequiredEntry(t *testing.T) {
 }
 
 func TestValidateName(t *testing.T) {
-	bad := []string{"", "/abs/path", "application/../x", "application/birdROMs/a..b", `application\birdROMs\x`, "other/x", "application/birdROMs/"}
+	bad := []string{"", "/abs/path", "birdROMs/../x", "birdROMs/a..b", `birdROMs\x`, "other/x", "birdROMs/", "application/birdROMs/birdroms"}
 	for _, n := range bad {
 		if err := validateName(n); err == nil {
 			t.Errorf("validateName(%q) = nil, want error", n)
