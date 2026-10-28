@@ -130,9 +130,11 @@ func main() {
 	// scroll down so the grid's second page of rows shows.
 	press := func(b input.Button) { go func() { _ = m.Run(m.Press(b)) }() }
 	script := map[int][]input.Button{
-		10: {input.A},
-		30: {input.Right, input.A, input.Down, input.Right, input.A},
-		90: {input.Down, input.Down},
+		10:  {input.A},
+		30:  {input.Right, input.A, input.Down, input.Right, input.A},
+		90:  {input.Down, input.Down},
+		130: {input.Y}, // select all: every tile gets the check, footer says "Y none"
+		170: {input.Y}, // select none again
 	}
 	browseui.FrameHook = func(r *sdl.Renderer, frame int) {
 		for _, b := range script[frame] {
