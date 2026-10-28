@@ -273,10 +273,17 @@ func (s *screen) drawHero(it download.Item) {
 	l1, l2 := s.wrap2(s.f.Small, it.ROM.Title, w)
 	s.text(s.f.Small, l1, white, x, heroY+10)
 	s.text(s.f.Small, l2, white, x, heroY+38)
+	tags := strings.Join(it.ROM.Tags, " · ")
+	if tags != "" && l2 == "" { // one-line title: the tags take the free second line
+		s.text(s.f.Tiny, s.fit(s.f.Tiny, tags, w), theme.Dimmed, x, heroY+40)
+	}
 
 	folder, fcol := "Roms/"+it.Dir, theme.Dimmed
 	if !it.Known {
 		folder, fcol = "unknown platform -> Roms/"+it.Dir, theme.Pink
+	}
+	if tags != "" && l2 != "" { // two-line title: tags follow the folder
+		folder += "  ·  " + tags
 	}
 	s.text(s.f.Tiny, s.fit(s.f.Tiny, folder, w), fcol, x, heroY+68)
 

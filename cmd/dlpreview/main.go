@@ -114,7 +114,18 @@ func main() {
 	sz := func(id int) *int64 { v := int64(sizes[id]); return &v }
 	cover := "http://example/cover"
 	rom := func(id int, title, platform, ext string) api.ROM {
-		return api.ROM{ID: id, Title: title, Platform: platform, Extension: ext, SizeBytes: sz(id), CoverURL: &cover}
+		var tags []string
+		switch id % 3 { // some with tags, some without
+		case 1:
+			tags = []string{"USA", "Europe"}
+		case 2:
+			tags = []string{"Japan", "Rev 1", "Beta"}
+		}
+		fn := title + ext
+		if len(tags) > 0 {
+			fn = title + " (" + strings.Join(tags, ", ") + ")" + ext
+		}
+		return api.ROM{ID: id, Title: title, Filename: fn, Tags: tags, Platform: platform, Extension: ext, SizeBytes: sz(id), CoverURL: &cover}
 	}
 	roms := []api.ROM{
 		rom(1, "Legend of Zelda - The Minish Cap", "Game Boy Advance", ".gba"),
@@ -123,7 +134,7 @@ func main() {
 		rom(4, "Broken Dump That Is Missing", "Nintendo 64", ".z64"),
 		rom(5, "Metroid Prime", "Nintendo GameCube", ".iso"),
 		rom(6, "Kirby Super Star Ultra Deluxe Remastered Edition", "Nintendo DS", ".nds"),
-		rom(7, "Sonic the Hedgehog 3", "Sega Genesis", ".md"),
+		rom(7, "Sonic the Hedgehog 3 & Knuckles - Complete Collection", "Sega Genesis", ".md"),
 	}
 	if *shotDir != "" {
 		want := map[int]bool{}
