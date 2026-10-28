@@ -53,7 +53,7 @@ const (
 
 	heroY, heroH = 62, 178
 	coverBox     = 150
-	listTop      = 254
+	listTop      = 250
 	rowH         = 36
 	maxRows      = 5
 )
@@ -74,9 +74,17 @@ func Show(r *sdl.Renderer, f Fonts, q *download.Queue, cs CoverSource) Outcome {
 
 	s := &screen{r: r, f: f, rate: download.NewRate(), rateID: -1, hero: newHeroCover(cs)}
 	defer s.hero.release()
-	cancelled := false
+	cancelled, userLeft := false, false
 	for {
 		finished := q.Finished()
+		leave := func() {
+			if finished {
+				userLeft = true // the summary was read; go back
+			} else {
+				cancelled = true
+				cancel()
+			}
+		}
 		for ev := sdl.PollEvent(); ev != nil; ev = sdl.PollEvent() {
 			switch e := ev.(type) {
 			case *sdl.QuitEvent:
@@ -84,30 +92,41 @@ func Show(r *sdl.Renderer, f Fonts, q *download.Queue, cs CoverSource) Outcome {
 				return Quit
 			case *sdl.ControllerButtonEvent:
 				if e.State == sdl.PRESSED && leaves(e.Button, finished) {
-					cancelled = cancelled || !finished
-					cancel()
+					leave()
 				}
 			case *sdl.KeyboardEvent:
 				if e.Type == sdl.KEYDOWN && e.Repeat == 0 {
 					name := sdl.GetKeyName(e.Keysym.Sym)
 					if name == "X" || name == "Escape" || (name == "Z" && finished) { // B, Menu, A on the dev keyboard
-						cancelled = cancelled || !finished
-						cancel()
+						leave()
 					}
 				}
 			}
 		}
-		if finished || cancelled {
-			select {
-			case <-stopped:
-				return Back
-			default:
-			}
+		stoppedNow := false
+		select {
+		case <-stopped:
+			stoppedNow = true
+		default:
+		}
+		if shouldReturn(finished, userLeft, cancelled, stoppedNow) {
+			return Back
 		}
 		s.draw(q.Snapshot(), finished, cancelled)
 		s.frame++
 		sdl.Delay(16)
 	}
+}
+
+// shouldReturn reports whether Show may return to browse. A queue that finished
+// on its own keeps the summary on screen until the user leaves; a cancelled one
+// returns as soon as it has actually stopped. Never before the queue goroutine
+// is done, so no download is left running behind browse.
+func shouldReturn(finished, userLeft, cancelled, stopped bool) bool {
+	if !stopped {
+		return false
+	}
+	return (finished && userLeft) || cancelled
 }
 
 // leaves reports whether a controller button leaves the screen: B and the
@@ -206,7 +225,7 @@ func (s *screen) draw(items []download.Item, finished, cancelled bool) {
 	// Footer: the first failure's reason (if any) and the button hint.
 	for _, it := range items {
 		if it.Status == download.Failed && it.Err != "" {
-			s.text(s.f.Tiny, s.fit(s.f.Tiny, "! "+it.Err, screenW-2*margin), theme.Pink, margin, screenH-48)
+			s.text(s.f.Tiny, s.fit(s.f.Tiny, "! "+it.Err, screenW-2*margin), theme.Pink, margin, screenH-44)
 			break
 		}
 	}
