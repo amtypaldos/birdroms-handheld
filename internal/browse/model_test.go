@@ -760,3 +760,213 @@ func TestFailedHomeLoadCanBeRetriedWithA(t *testing.T) {
 		t.Fatal("A after a successful load should open the row")
 	}
 }
+
+// ---- select all (Y) --------------------------------------------------------
+
+func selectedIDs(m *Model) []int { return ids(m.Selected()) }
+
+func rangeIDs(first, n int) []int {
+	out := make([]int, n)
+	for i := range out {
+		out[i] = first + i
+	}
+	return out
+}
+
+func TestYSelectsWholePlaylistInGridOrderAfterEarlierSelection(t *testing.T) {
+	f := standardSource()
+	m := newHome(t, f)
+	// Select ROM 101 on the GBA platform grid first, then go to the playlist.
+	presses(t, m, input.Down, input.Down, input.A, input.Right, input.A, input.B) // GBA grid: pick 101; home
+	presses(t, m, input.Up, input.Up, input.A)                                    // playlist grid (30,10,20)
+	if v := m.View(); v.Mode != ModeGrid || v.Title != "Road trip" {
+		t.Fatalf("not in playlist grid: %+v", v)
+	}
+	presses(t, m, input.Y)
+	if got, want := selectedIDs(m), []int{101, 30, 10, 20}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("selected = %v, want %v", got, want)
+	}
+	// ROM already selected in this grid is not duplicated.
+	presses(t, m, input.Y, input.A, input.Y) // none, toggle 30 on, all again
+	if got, want := selectedIDs(m), []int{101, 30, 10, 20}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("selected = %v, want %v", got, want)
+	}
+}
+
+func TestYAgainDeselectsOnlyThisGrid(t *testing.T) {
+	f := standardSource()
+	m := newHome(t, f)
+	presses(t, m, input.Down, input.Down, input.A, input.A, input.B) // GBA: select 100
+	presses(t, m, input.Up, input.Up, input.A, input.Y)              // playlist: all
+	if v := m.View(); !v.AllSelected {
+		t.Fatalf("AllSelected = false after select all: %+v", v)
+	}
+	presses(t, m, input.Y)
+	if got, want := selectedIDs(m), []int{100}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("selected = %v, want %v", got, want)
+	}
+	if v := m.View(); v.AllSelected {
+		t.Fatal("AllSelected still true after select none")
+	}
+}
+
+func TestYOnPagedPlatformFetchesRemainingPagesThenSelectsAll(t *testing.T) {
+	f := pagedSource(36, 12)
+	m := openFirstPlatform(t, f)
+	e := m.Press(input.Y)
+	if e.Kind != EffectNextPage || e.Page != 2 {
+		t.Fatalf("effect = %+v, want next page 2", e)
+	}
+	if v := m.View(); !v.SelectingAll || v.AllSelected {
+		t.Fatalf("view while fetching: %+v", v)
+	}
+	if got := len(m.Selected()); got != 0 {
+		t.Fatalf("selected %d before last page landed", got)
+	}
+	if err := m.Run(e); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := selectedIDs(m), rangeIDs(1000, 36); !reflect.DeepEqual(got, want) {
+		t.Fatalf("selected = %v, want %v", got, want)
+	}
+	v := m.View()
+	if v.SelectingAll || !v.AllSelected {
+		t.Fatalf("view after: SelectingAll=%v AllSelected=%v", v.SelectingAll, v.AllSelected)
+	}
+	for _, c := range []string{"ListROMs(GBA,1)", "ListROMs(GBA,2)", "ListROMs(GBA,3)"} {
+		if n := f.callCount(c); n != 1 {
+			t.Fatalf("%s called %d times; calls %v", c, n, f.calls)
+		}
+	}
+}
+
+func TestYReusesPageAlreadyAskedByLazyLoader(t *testing.T) {
+	f := pagedSource(36, 12)
+	m := openFirstPlatform(t, f)
+	presses(t, m, input.Down)
+	lazy := m.Press(input.Down) // page 2 asked, not yet run
+	if lazy.Kind != EffectNextPage {
+		t.Fatal("expected lazy page effect")
+	}
+	if e := m.Press(input.Y); e.Kind != EffectNone {
+		t.Fatalf("Y re-asked an in-flight page: %+v", e)
+	}
+	if !m.View().SelectingAll {
+		t.Fatal("SelectingAll should be true")
+	}
+	if err := m.Run(lazy); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := selectedIDs(m), rangeIDs(1000, 36); !reflect.DeepEqual(got, want) {
+		t.Fatalf("selected = %v", got)
+	}
+	for p := 1; p <= 3; p++ {
+		if n := f.callCount(fmt.Sprintf("ListROMs(GBA,%d)", p)); n != 1 {
+			t.Fatalf("page %d fetched %d times; %v", p, n, f.calls)
+		}
+	}
+}
+
+func TestYWhileSelectingAllDoesNothingExtra(t *testing.T) {
+	f := pagedSource(36, 12)
+	m := openFirstPlatform(t, f)
+	e := m.Press(input.Y)
+	if e2 := m.Press(input.Y); e2.Kind != EffectNone {
+		t.Fatalf("second Y returned %+v", e2)
+	}
+	if err := m.Run(e); err != nil {
+		t.Fatal(err)
+	}
+	if n := f.callCount("ListROMs(GBA,2)"); n != 1 {
+		t.Fatalf("page 2 fetched %d times", n)
+	}
+	if got := len(m.Selected()); got != 36 {
+		t.Fatalf("selected %d, want 36", got)
+	}
+}
+
+func TestBackDuringSelectAllCancelsIt(t *testing.T) {
+	f := pagedSource(36, 12)
+	m := openFirstPlatform(t, f)
+	e := m.Press(input.Y)
+	do(t, m, input.B)
+	if v := m.View(); v.Mode != ModeHome || v.SelectingAll {
+		t.Fatalf("after B: %+v", v)
+	}
+	if err := m.Run(e); err != nil {
+		t.Fatal(err)
+	}
+	if got := len(m.Selected()); got != 0 {
+		t.Fatalf("late page selected %d ROMs", got)
+	}
+	if n := f.callCount("ListROMs(GBA,3)"); n != 0 {
+		t.Fatalf("cancelled select-all kept fetching: %v", f.calls)
+	}
+	// Reopening the grid starts clean.
+	do(t, m, input.A)
+	if v := m.View(); v.SelectingAll || len(v.ROMs) != 12 {
+		t.Fatalf("reopened grid: SelectingAll=%v roms=%d", v.SelectingAll, len(v.ROMs))
+	}
+}
+
+func TestPageErrorDuringSelectAllSelectsNothingAndYWorksAgain(t *testing.T) {
+	f := pagedSource(36, 12)
+	m := openFirstPlatform(t, f)
+	f.err = errors.New("flaky")
+	if err := m.Run(m.Press(input.Y)); err == nil {
+		t.Fatal("expected error")
+	}
+	v := m.View()
+	if v.SelectingAll || v.Err == "" || len(m.Selected()) != 0 {
+		t.Fatalf("after failure: SelectingAll=%v Err=%q selected=%d", v.SelectingAll, v.Err, len(m.Selected()))
+	}
+	f.err = nil
+	do(t, m, input.Y)
+	if got := len(m.Selected()); got != 36 {
+		t.Fatalf("selected %d after retry, want 36", got)
+	}
+	if m.View().Err != "" {
+		t.Fatal("error not cleared")
+	}
+}
+
+func TestYDoesNothingOnHomeEmptyGridOrWhileOpening(t *testing.T) {
+	f := standardSource()
+	m := newHome(t, f)
+	if e := m.Press(input.Y); e.Kind != EffectNone || len(m.Selected()) != 0 {
+		t.Fatal("Y acted on home")
+	}
+	// While a grid is opening (effect not run yet).
+	open := m.Press(input.A)
+	if open.Kind != EffectOpenPlaylist {
+		t.Fatalf("effect = %+v", open)
+	}
+	if e := m.Press(input.Y); e.Kind != EffectNone || len(m.Selected()) != 0 {
+		t.Fatal("Y acted while opening")
+	}
+	if err := m.Run(open); err != nil {
+		t.Fatal(err)
+	}
+	presses(t, m, input.B, input.Down, input.A) // empty playlist
+	if v := m.View(); v.Mode != ModeGrid || len(v.ROMs) != 0 {
+		t.Fatalf("expected empty grid: %+v", v)
+	}
+	if e := m.Press(input.Y); e.Kind != EffectNone || len(m.Selected()) != 0 || m.View().SelectingAll || m.View().AllSelected {
+		t.Fatal("Y acted on an empty grid")
+	}
+}
+
+func TestAllSelectedFalseWhilePagesRemain(t *testing.T) {
+	f := pagedSource(36, 12)
+	m := openFirstPlatform(t, f)
+	for i := 0; i < 12; i++ { // select every loaded ROM by hand
+		do(t, m, input.A)
+		do(t, m, input.Right)
+	}
+	if got := len(m.Selected()); got != 12 {
+		t.Fatalf("selected %d, want 12", got)
+	}
+	if m.View().AllSelected {
+		t.Fatal("AllSelected true with unloaded pages")
+	}
+}

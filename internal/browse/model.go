@@ -103,6 +103,11 @@ type View struct {
 	Focus    int       // index into ROMs
 	Selected map[int]bool
 	Empty    string // non-empty when the grid has nothing to show
+	// AllSelected is true when the grid is fully loaded (no pages left) and
+	// every ROM in it is selected: Y would deselect them.
+	AllSelected bool
+	// SelectingAll is true while Y is fetching the remaining pages.
+	SelectingAll bool
 
 	// Loading is true while an open (not a background page) is in flight.
 	Loading bool
@@ -140,7 +145,8 @@ type Model struct {
 	focus      int
 	loadedPage int
 	hasNext    bool
-	asked      int // highest page requested (>= loadedPage)
+	asked      int  // highest page requested (>= loadedPage)
+	selectAll  bool // Y is fetching the remaining pages to select the whole platform
 
 	selected []api.ROM
 	selIDs   map[int]bool
@@ -223,6 +229,8 @@ func (m *Model) View() View {
 	v.Title = m.title
 	v.ROMs = m.items
 	v.Focus = m.focus
+	v.SelectingAll = m.selectAll
+	v.AllSelected = m.allSelected()
 	v.Selected = make(map[int]bool, len(m.selIDs))
 	for id := range m.selIDs {
 		v.Selected[id] = true
@@ -308,6 +316,7 @@ func (m *Model) pressGrid(b input.Button) Effect {
 	case input.B:
 		m.mode = ModeHome
 		m.gen++ // invalidates in-flight page fetches for this grid
+		m.selectAll = false
 		m.items = nil
 		m.loading = false
 		return Effect{}
@@ -317,6 +326,8 @@ func (m *Model) pressGrid(b input.Button) Effect {
 		}
 		m.toggle(m.items[m.focus])
 		return Effect{}
+	case input.Y:
+		return m.pressSelectAll()
 	case input.Left:
 		m.focus = clamp(m.focus-1, n)
 	case input.Right:
@@ -329,6 +340,62 @@ func (m *Model) pressGrid(b input.Button) Effect {
 		return Effect{}
 	}
 	return m.lazy()
+}
+
+// allSelected reports whether the grid is fully loaded and every ROM in it is
+// selected. Caller holds the lock.
+func (m *Model) allSelected() bool {
+	if m.mode != ModeGrid || len(m.items) == 0 || m.hasNext {
+		return false
+	}
+	for _, r := range m.items {
+		if !m.selIDs[r.ID] {
+			return false
+		}
+	}
+	return true
+}
+
+// pressSelectAll is Y: select every ROM of the grid, or deselect them when they
+// all are selected. On a platform with more pages it starts fetching them and
+// selects once the last one lands. Caller holds the lock.
+func (m *Model) pressSelectAll() Effect {
+	if len(m.items) == 0 || m.selectAll {
+		return Effect{}
+	}
+	if m.allSelected() {
+		m.deselectItems()
+		return Effect{}
+	}
+	if !m.hasNext {
+		m.selectItems()
+		return Effect{}
+	}
+	m.selectAll = true
+	m.errMsg = ""
+	if m.asked > m.loadedPage {
+		return Effect{} // a page is already in flight; its arrival continues the job
+	}
+	m.asked = m.loadedPage + 1
+	return Effect{Kind: EffectNextPage, Platform: m.platform, Page: m.asked, gen: m.gen}
+}
+
+// selectItems appends the grid's unselected ROMs in grid order.
+func (m *Model) selectItems() {
+	for _, r := range m.items {
+		if !m.selIDs[r.ID] {
+			m.toggle(r)
+		}
+	}
+}
+
+// deselectItems removes the grid's ROMs, leaving the rest of the selection.
+func (m *Model) deselectItems() {
+	for _, r := range m.items {
+		if m.selIDs[r.ID] {
+			m.toggle(r)
+		}
+	}
 }
 
 func clamp(i, n int) int {
@@ -448,6 +515,15 @@ func (m *Model) run(e Effect) (Effect, error) {
 		m.loadedPage = e.Page
 		m.hasNext = p.Next != nil && len(p.Results) > 0
 		m.errMsg = ""
+		if m.selectAll {
+			if m.hasNext {
+				m.asked = m.loadedPage + 1
+				return Effect{Kind: EffectNextPage, Platform: m.platform, Page: m.asked, gen: m.gen}, nil
+			}
+			m.selectAll = false
+			m.selectItems()
+			return Effect{}, nil
+		}
 		return m.lazy(), nil
 	}
 	return Effect{}, nil
@@ -466,6 +542,7 @@ func (m *Model) openGrid(title string, playlistID int, platform string, results 
 	m.loadedPage = page
 	m.asked = page
 	m.hasNext = hasNext
+	m.selectAll = false
 }
 
 // fail records a failed effect and returns err. A 401 locks the model; any
@@ -474,8 +551,11 @@ func (m *Model) fail(e Effect, err error) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if e.Kind == EffectNextPage {
-		if e.gen == m.gen && m.asked == e.Page {
-			m.asked = m.loadedPage // let the next focus move retry
+		if e.gen == m.gen {
+			m.selectAll = false // a failed page ends select-all; Y can start it again
+			if m.asked == e.Page {
+				m.asked = m.loadedPage // let the next focus move retry
+			}
 		}
 	} else if e.Kind == EffectLoadHome || e.gen == m.gen {
 		m.loading = false
