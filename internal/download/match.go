@@ -42,7 +42,7 @@ func findExisting(dir string, rom api.ROM) (string, bool) {
 	if rom.SizeBytes == nil || *rom.SizeBytes <= 0 {
 		return "", false
 	}
-	want := normalizeName(rom.Title)
+	want := normalizeName(baseTitle(rom))
 	if want == "" {
 		return "", false
 	}

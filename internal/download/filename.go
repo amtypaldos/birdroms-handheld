@@ -24,7 +24,7 @@ const (
 // path separators and the characters FAT/exFAT cannot store are replaced with
 // "_". An empty title becomes "rom-<id>". The result is never "." or "..".
 func Filename(rom api.ROM) string {
-	title := strings.TrimRight(strings.TrimSpace(sanitize(rom.Title)), ". ")
+	title := strings.TrimRight(strings.TrimSpace(sanitize(baseTitle(rom))), ". ")
 	ext := truncBytes(sanitize(rom.Extension), maxExtBytes)
 	title = truncBytes(title, maxNameBytes-len(ext))
 	title = strings.TrimRight(title, ". ")
@@ -34,11 +34,23 @@ func Filename(rom api.ROM) string {
 	return title + ext
 }
 
+// baseTitle is rom.Title without a trailing copy of its own extension. Titles
+// taken from file names can still end in ".z64"; without this the saved file
+// would be "<title>.z64.z64". Only an extension equal to rom.Extension (any
+// case) is dropped, so a title like "Disk 1.z64" on a .bin ROM is left alone.
+func baseTitle(rom api.ROM) string {
+	ext := rom.Extension
+	if ext != "" && len(rom.Title) > len(ext) && strings.EqualFold(rom.Title[len(rom.Title)-len(ext):], ext) {
+		return rom.Title[:len(rom.Title)-len(ext)]
+	}
+	return rom.Title
+}
+
 // idFilename is Filename with "-<id>" inserted before the extension
 // ("Zelda.gba", id 42 -> "Zelda-42.gba"). It is used when the clean name is
 // already taken by another ROM. It is still one sanitized path segment.
 func idFilename(rom api.ROM) string {
-	title := strings.TrimRight(strings.TrimSpace(sanitize(rom.Title)), ". ")
+	title := strings.TrimRight(strings.TrimSpace(sanitize(baseTitle(rom))), ". ")
 	ext := truncBytes(sanitize(rom.Extension), maxExtBytes)
 	suffix := fmt.Sprintf("-%d", rom.ID)
 	title = truncBytes(title, maxNameBytes-len(ext)-len(suffix))
