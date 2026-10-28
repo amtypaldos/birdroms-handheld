@@ -37,7 +37,7 @@ func TestFolderKnownPlatforms(t *testing.T) {
 
 func TestFolderUnknownGoesToUnsorted(t *testing.T) {
 	for _, platform := range []string{
-		"Nintendo GameCube", "Nintendo Wii", "Nintendo 3DS", "Atari Jaguar",
+		"Nintendo GameCube", "Nintendo Wii", "Nintendo 3DS",
 		"Disc Image", "Archive", "unknown", "", "Totally New Console",
 		"../../etc", "a/b", "..", "GBA/..", `Game Boy\Advance`,
 	} {
@@ -45,5 +45,28 @@ func TestFolderUnknownGoesToUnsorted(t *testing.T) {
 		if dir != "_UNSORTED" || known {
 			t.Errorf("Folder(%q) = (%q, %v), want (\"_UNSORTED\", false)", platform, dir, known)
 		}
+	}
+}
+
+func TestFolderFromAliasTable(t *testing.T) {
+	cases := map[string]string{
+		"Sega CD / Mega-CD": "MDCD",
+		"Neo Geo":           "NEOGEO",
+		"Atari Jaguar":      "JAGUAR",
+		"Virtual Boy":       "VB",
+		"PICO-8":            "PICO",
+	}
+	for platform, want := range cases {
+		dir, known := Folder(platform)
+		if dir != want || !known {
+			t.Errorf("Folder(%q) = (%q, %v), want (%q, true)", platform, dir, known, want)
+		}
+	}
+}
+
+func TestFolderNonGameIsUnsorted(t *testing.T) {
+	dir, known := Folder("Apps")
+	if dir != "_UNSORTED" || known {
+		t.Errorf("Folder(\"Apps\") = (%q, %v), want (\"_UNSORTED\", false)", dir, known)
 	}
 }
