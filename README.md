@@ -2,6 +2,8 @@
 
 On-device client for [birdROMs](https://github.com/amtypaldos/birdROMs): Go + SDL2 app for muOS (RG40XX-V first).
 
+**Installing on a handheld?** Follow [docs/install.md](docs/install.md). Publishing a new version for friends: [docs/publishing.md](docs/publishing.md).
+
 ## Build
 
 Cross-compiled from macOS to a **dynamic arm64** binary linked against the device's own SDL2/SDL2_ttf (the device ships them; they need glibc >= 2.38, so the target is `aarch64-linux-gnu.2.38`).

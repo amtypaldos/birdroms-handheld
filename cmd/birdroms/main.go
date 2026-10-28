@@ -31,6 +31,8 @@ const (
 	fontPath         = "assets/fonts/ChakraPetch-Bold.ttf"
 	// configPath is relative to the working directory: mux_launch.sh cds to the app dir.
 	configPath = "config.json"
+	// seedPath is written by the website into the downloaded app: which server to pair with.
+	seedPath = "server.json"
 )
 
 func main() {
@@ -156,9 +158,9 @@ func firstRun(r *sdl.Renderer, f pairui.Fonts) pairui.Outcome {
 	if cfg.Paired() {
 		return pairui.Paired
 	}
-	server := pair.ResolveServer(os.Getenv("BIRDROMS_SERVER"), cfg)
+	server := pair.ResolveServer(os.Getenv("BIRDROMS_SERVER"), config.WithSeedServer(cfg, seedPath))
 	if server == "" {
-		return pairui.Message(r, f, "No server configured.", "Set BIRDROMS_SERVER (or server_url", "in config.json) and relaunch.")
+		return pairui.Message(r, f, "No server configured.", "Download birdROMs again from your", "friend's birdROMs website (Handheld", "page) and reinstall it.")
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
