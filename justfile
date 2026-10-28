@@ -16,14 +16,15 @@ build:
     CGO_LDFLAGS="-L{{sysroot}}/lib -lSDL2 -lSDL2_ttf -Wl,--allow-shlib-undefined" \
     go build -trimpath -ldflags "-s -w" -o dist/birdroms ./cmd/birdroms
 
-# Push the binary + font to the device and run it (SSH password via SSHPASS, default root).
+# Push the binary + font into the app folder muOS actually launches from (/run/muos/storage/application,
+# which follows the configured app storage, e.g. the SD card); SSH password via SSHPASS, default root.
 deploy: build
-    SSHPASS=${SSHPASS:-root} sshpass -e ssh root@muos.local 'mkdir -p /mnt/mmc/MUOS/application/birdROMs/assets/fonts /mnt/mmc/MUOS/application/birdROMs/glyph'
-    SSHPASS=${SSHPASS:-root} sshpass -e scp dist/birdroms root@muos.local:/mnt/mmc/MUOS/application/birdROMs/birdroms
-    SSHPASS=${SSHPASS:-root} sshpass -e scp assets/fonts/ChakraPetch-Bold.ttf root@muos.local:/mnt/mmc/MUOS/application/birdROMs/assets/fonts/
-    SSHPASS=${SSHPASS:-root} sshpass -e scp package/glyph/birdroms.svg root@muos.local:/mnt/mmc/MUOS/application/birdROMs/glyph/
-    SSHPASS=${SSHPASS:-root} sshpass -e scp package/mux_launch.sh package/mux_lang.ini root@muos.local:/mnt/mmc/MUOS/application/birdROMs/
-    SSHPASS=${SSHPASS:-root} sshpass -e ssh root@muos.local 'chmod +x /mnt/mmc/MUOS/application/birdROMs/mux_launch.sh /mnt/mmc/MUOS/application/birdROMs/birdroms && sync'
+    SSHPASS=${SSHPASS:-root} sshpass -e ssh root@muos.local 'mkdir -p /run/muos/storage/application/birdROMs/assets/fonts /run/muos/storage/application/birdROMs/glyph'
+    SSHPASS=${SSHPASS:-root} sshpass -e scp dist/birdroms root@muos.local:/run/muos/storage/application/birdROMs/birdroms
+    SSHPASS=${SSHPASS:-root} sshpass -e scp assets/fonts/ChakraPetch-Bold.ttf root@muos.local:/run/muos/storage/application/birdROMs/assets/fonts/
+    SSHPASS=${SSHPASS:-root} sshpass -e scp package/glyph/birdroms.svg root@muos.local:/run/muos/storage/application/birdROMs/glyph/
+    SSHPASS=${SSHPASS:-root} sshpass -e scp package/mux_launch.sh package/mux_lang.ini root@muos.local:/run/muos/storage/application/birdROMs/
+    SSHPASS=${SSHPASS:-root} sshpass -e ssh root@muos.local 'chmod +x /run/muos/storage/application/birdROMs/mux_launch.sh /run/muos/storage/application/birdROMs/birdroms && sync'
 
 # Build dist/birdROMs.muxapp (install via the muOS Archive Manager). Needs the same toolchain as `build`.
 package: build
