@@ -5,6 +5,7 @@ package download
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -19,11 +20,31 @@ const (
 	maxExtBytes  = 32
 )
 
-// Filename builds the single-path-segment file name for rom from its title and
-// extension (which includes the leading dot). Control characters are dropped;
+// originalName is the sanitized, length-bounded original upload name of rom
+// with room reserved for reserve extra bytes (an id suffix), or "" when rom has
+// no usable one. The extension is kept whole; only the stem is truncated.
+func originalName(rom api.ROM, reserve int) (stem, ext string) {
+	if strings.TrimSpace(rom.Filename) == "" {
+		return "", ""
+	}
+	name := sanitize(rom.Filename)
+	ext = truncBytes(filepath.Ext(name), maxExtBytes)
+	stem = strings.TrimSpace(strings.TrimSuffix(name, filepath.Ext(name)))
+	stem = truncBytes(stem, maxNameBytes-len(ext)-reserve)
+	return strings.TrimRight(stem, ". "), ext
+}
+
+// Filename builds the single-path-segment file name for rom. When the server
+// reports the original upload name (rom.Filename) that is used, sanitized, so
+// saves and box art keyed to the file name keep matching. Otherwise (old
+// servers and rows) it is built from the title and extension (which includes
+// the leading dot). Control characters are dropped;
 // path separators and the characters FAT/exFAT cannot store are replaced with
 // "_". An empty title becomes "rom-<id>". The result is never "." or "..".
 func Filename(rom api.ROM) string {
+	if stem, ext := originalName(rom, 0); stem != "" {
+		return stem + ext
+	}
 	title := strings.TrimRight(strings.TrimSpace(sanitize(baseTitle(rom))), ". ")
 	ext := truncBytes(sanitize(rom.Extension), maxExtBytes)
 	title = truncBytes(title, maxNameBytes-len(ext))
@@ -48,11 +69,15 @@ func baseTitle(rom api.ROM) string {
 
 // idFilename is Filename with "-<id>" inserted before the extension
 // ("Zelda.gba", id 42 -> "Zelda-42.gba"). It is used when the clean name is
-// already taken by another ROM. It is still one sanitized path segment.
+// already taken by another ROM. It is still one sanitized path segment and,
+// like Filename, prefers the original upload name.
 func idFilename(rom api.ROM) string {
+	suffix := fmt.Sprintf("-%d", rom.ID)
+	if stem, ext := originalName(rom, len(suffix)); stem != "" {
+		return stem + suffix + ext
+	}
 	title := strings.TrimRight(strings.TrimSpace(sanitize(baseTitle(rom))), ". ")
 	ext := truncBytes(sanitize(rom.Extension), maxExtBytes)
-	suffix := fmt.Sprintf("-%d", rom.ID)
 	title = truncBytes(title, maxNameBytes-len(ext)-len(suffix))
 	title = strings.TrimRight(title, ". ")
 	if title == "" {

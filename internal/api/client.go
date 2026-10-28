@@ -31,6 +31,11 @@ type ROM struct {
 	Extension string  `json:"extension"`
 	SizeBytes *int64  `json:"size_bytes"`
 	CoverURL  *string `json:"cover_url"`
+	// Filename is the original upload name including its extension; Tags are
+	// the region/dump tags parsed from it. Both are absent (zero) on old
+	// servers and old rows.
+	Filename string   `json:"filename"`
+	Tags     []string `json:"tags"`
 }
 
 // ROMPage is one page of the ROM listing. Next and Previous are the server's
