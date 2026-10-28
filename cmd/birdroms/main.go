@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"runtime"
 	"time"
 
@@ -125,6 +126,8 @@ func run() error {
 		dlClient := api.New(cfg.ServerURL, cfg.DeviceToken, download.HTTPClient())
 		dl := func(roms []api.ROM) bool {
 			q := download.New(dlClient, romMount, roms)
+			// Every storage the launcher found, for the already-there check.
+			q.SetLibraries(filepath.SplitList(os.Getenv("BIRDROMS_ROM_MOUNTS"))...)
 			return downloadui.Show(r, downloadui.Fonts{Mid: mid, Small: small, Tiny: tiny}, q, client) == downloadui.Quit
 		}
 		switch browseui.Show(r, browseui.Fonts{Small: small, Tiny: tiny}, browse.New(client), client, dl) {

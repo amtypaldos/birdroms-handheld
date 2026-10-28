@@ -72,6 +72,9 @@ type Queue struct {
 
 	f     Fetcher
 	mount string
+	// libs are other ROM storages (e.g. the SD card when downloads go to the
+	// internal one). They are only read, to spot a ROM that is already there.
+	libs []string
 
 	mu       sync.Mutex
 	items    []Item
@@ -96,6 +99,17 @@ func New(f Fetcher, romMount string, roms []api.ROM) *Queue {
 		}
 	}
 	return q
+}
+
+// SetLibraries tells the queue about other ROM storages to check for a ROM
+// that is already there. Empty entries and the download target are ignored.
+func (q *Queue) SetLibraries(roots ...string) {
+	q.libs = q.libs[:0]
+	for _, r := range roots {
+		if r != "" && r != q.mount {
+			q.libs = append(q.libs, r)
+		}
+	}
 }
 
 // Snapshot returns a copy of the items for drawing.
@@ -149,6 +163,15 @@ func (q *Queue) runOne(ctx context.Context, i int) {
 	// it.Dir is always a name from the folder map (or the fallback), never
 	// the raw platform string.
 	dir := filepath.Join(q.mount, "Roms", it.Dir)
+	// Another storage may already hold it (muOS merges them in its game list).
+	// Checked before anything is created so a skip leaves no empty folders.
+	for _, lib := range q.libs {
+		if name, ok := findExisting(filepath.Join(lib, "Roms", it.Dir), it.ROM); ok {
+			size := *it.ROM.SizeBytes
+			q.update(i, func(it *Item) { it.Status, it.Skipped, it.Existing, it.Written = Done, true, name, size })
+			return
+		}
+	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		q.fail(i, err.Error())
 		return
