@@ -31,6 +31,10 @@ type Fonts struct {
 // window was closed meanwhile.
 type Downloader func(roms []api.ROM) (quit bool)
 
+// FrameHook, when set by a development tool (cmd/gridpreview), is called after
+// each frame is drawn and before it is presented. It is nil in the app.
+var FrameHook func(r *sdl.Renderer, frame int)
+
 // Outcome is how the browse screen ended.
 type Outcome int
 
@@ -207,6 +211,9 @@ func (s *screen) draw(v browse.View) {
 		s.drawHome(v)
 	} else {
 		s.drawGrid(v)
+	}
+	if FrameHook != nil {
+		FrameHook(s.r, s.frame)
 	}
 	s.r.Present()
 }
