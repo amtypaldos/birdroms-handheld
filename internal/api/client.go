@@ -127,7 +127,7 @@ const MaxCoverBytes = 4 << 20
 // (including port) as the API base URL; a cover anywhere else is fetched with
 // no Authorization header. Callers must not call it for a nil CoverURL.
 func (c *Client) GetCover(coverURL string) ([]byte, error) {
-	resp, err := c.doGet(context.Background(), coverURL, "cover", "image/*", 0, c.sameHost(coverURL))
+	resp, err := c.doGet(context.Background(), coverURL, "cover", "image/*, */*;q=0.8", 0, c.sameHost(coverURL))
 	if err != nil {
 		return nil, err
 	}
