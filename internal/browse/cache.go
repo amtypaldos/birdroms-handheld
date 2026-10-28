@@ -84,8 +84,8 @@ func (c *Cache[V]) release(id int, v V) {
 
 // ---- what is on screen -----------------------------------------------------
 
-// VisibleRows is how many grid rows fit on the 640x480 screen.
-const VisibleRows = 3
+// VisibleRows is how many grid rows (of square covers) fit on the 640x480 screen.
+const VisibleRows = 2
 
 // ScrollRow returns the first visible grid row after focusing focusRow, moving
 // the window as little as possible.
