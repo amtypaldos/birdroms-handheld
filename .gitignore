@@ -1,5 +1,6 @@
 /sysroot/
 /dist/
+/.worktrees/
 *.log
 .DS_Store
 ._*
