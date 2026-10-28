@@ -53,9 +53,9 @@ const (
 	homeMargin = 28
 
 	// Grid.
-	cellW, cellH = 148, 132
+	cellW, cellH = 148, 190 // square box + title + a second text line
 	gridX, gridY = 24, 52
-	boxW, boxH   = 136, 100 // cover box inside a cell
+	boxW, boxH   = 136, 136 // square cover box inside a cell
 )
 
 // coverTex is a cached cover. A nil *coverTex in the cache means the fetch

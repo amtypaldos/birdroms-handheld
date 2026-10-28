@@ -20,7 +20,7 @@ const (
 	coverWorkers = 3
 	// Decoded covers are shrunk to the cover box on the worker, so the SDL
 	// thread only ever uploads small textures.
-	coverMaxW, coverMaxH = 136, 100
+	coverMaxW, coverMaxH = 136, 136
 )
 
 type coverJob struct {

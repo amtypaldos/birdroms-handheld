@@ -94,9 +94,9 @@ func TestCacheNilOnEvictIsFine(t *testing.T) {
 func TestScrollRowKeepsFocusVisible(t *testing.T) {
 	cases := []struct{ focusRow, scroll, want int }{
 		{0, 0, 0},
-		{2, 0, 0},  // last visible row (3 rows: 0..2)
-		{3, 0, 1},  // one past the bottom: scroll down by one
-		{10, 0, 8}, // big jump: focus lands on the last visible row
+		{1, 0, 0},  // last visible row (2 rows: 0..1)
+		{2, 0, 1},  // one past the bottom: scroll down by one
+		{10, 0, 9}, // big jump: focus lands on the last visible row
 		{1, 5, 1},  // above the window: scroll up to it
 		{6, 5, 5},  // inside window: unchanged
 	}
@@ -109,8 +109,8 @@ func TestScrollRowKeepsFocusVisible(t *testing.T) {
 
 func TestVisibleRangeClampsToLoaded(t *testing.T) {
 	cases := []struct{ scrollRow, total, first, end int }{
-		{0, 100, 0, 12},
-		{2, 100, 8, 20},
+		{0, 100, 0, 8},
+		{2, 100, 8, 16},
 		{0, 5, 0, 5},
 		{1, 5, 4, 5},
 		{0, 0, 0, 0},
