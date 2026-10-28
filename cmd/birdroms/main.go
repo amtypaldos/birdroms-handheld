@@ -125,7 +125,7 @@ func run() error {
 		dlClient := api.New(cfg.ServerURL, cfg.DeviceToken, download.HTTPClient())
 		dl := func(roms []api.ROM) bool {
 			q := download.New(dlClient, romMount, roms)
-			return downloadui.Show(r, downloadui.Fonts{Small: small, Tiny: tiny}, q) == downloadui.Quit
+			return downloadui.Show(r, downloadui.Fonts{Mid: mid, Small: small, Tiny: tiny}, q, client) == downloadui.Quit
 		}
 		switch browseui.Show(r, browseui.Fonts{Small: small, Tiny: tiny}, browse.New(client), client, dl) {
 		case browseui.Revoked:
