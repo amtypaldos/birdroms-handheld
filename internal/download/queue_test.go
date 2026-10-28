@@ -550,3 +550,87 @@ func TestStopBeforeFirstByteAbortsRequest(t *testing.T) {
 		t.Fatalf("item = %+v, want Cancelled", it)
 	}
 }
+
+func gbaSized(id int, title string, size int64) api.ROM {
+	r := gba(id, title)
+	r.SizeBytes = &size
+	return r
+}
+
+func TestAlreadyOnCardUnderTaggedNameIsSkipped(t *testing.T) {
+	mount := t.TempDir()
+	dir := filepath.Join(mount, "Roms", "GBA")
+	os.MkdirAll(dir, 0o755)
+	os.WriteFile(filepath.Join(dir, "Pokemon - Emerald Version (USA, Europe).gba"), []byte("abcdef"), 0o644)
+
+	fetch := &fakeFetcher{fn: body("abcdef")}
+	q := New(fetch, mount, []api.ROM{gbaSized(1, "Pokemon - Emerald Version", 6)})
+	refreshed := false
+	q.Refresh = func(string) error { refreshed = true; return nil }
+	q.Run(context.Background())
+
+	if len(fetch.calls) != 0 {
+		t.Fatalf("fetched a ROM that is already on the card: %v", fetch.calls)
+	}
+	it := q.Snapshot()[0]
+	if it.Status != Done || !it.Skipped || it.Existing != "Pokemon - Emerald Version (USA, Europe).gba" {
+		t.Fatalf("item = %+v, want Done, Skipped, Existing = the card's file name", it)
+	}
+	entries, _ := os.ReadDir(dir)
+	if len(entries) != 1 || refreshed {
+		t.Fatalf("a duplicate was written or Refresh ran: %d entries, refreshed=%v", len(entries), refreshed)
+	}
+}
+
+func TestSimilarNameButDifferentSizeIsStillDownloaded(t *testing.T) {
+	mount := t.TempDir()
+	dir := filepath.Join(mount, "Roms", "GBA")
+	os.MkdirAll(dir, 0o755)
+	os.WriteFile(filepath.Join(dir, "Metroid (USA).gba"), []byte("1234"), 0o644)
+
+	fetch := &fakeFetcher{fn: body("0123456789")}
+	q := New(fetch, mount, []api.ROM{gbaSized(1, "Metroid", 10)})
+	q.Run(context.Background())
+
+	if len(fetch.calls) != 1 {
+		t.Fatalf("a different dump was not downloaded: calls %v", fetch.calls)
+	}
+	if got := readFile(t, filepath.Join(dir, "Metroid (USA).gba")); got != "1234" {
+		t.Fatalf("existing file touched: %q", got)
+	}
+	if got := readFile(t, filepath.Join(dir, "Metroid.gba")); got != "0123456789" {
+		t.Fatalf("Metroid.gba = %q", got)
+	}
+}
+
+func TestSameSizeButDifferentNameOrExtensionIsStillDownloaded(t *testing.T) {
+	mount := t.TempDir()
+	dir := filepath.Join(mount, "Roms", "GBA")
+	os.MkdirAll(dir, 0o755)
+	os.WriteFile(filepath.Join(dir, "Kirby.gba"), []byte("abcdef"), 0o644)   // same size, other game
+	os.WriteFile(filepath.Join(dir, "Metroid.srm"), []byte("abcdef"), 0o644) // same name and size, a save file
+	os.WriteFile(filepath.Join(dir, "Metroid.gba.part"), []byte("abcdef"), 0o644)
+
+	fetch := &fakeFetcher{fn: body("abcdef")}
+	q := New(fetch, mount, []api.ROM{gbaSized(1, "Metroid", 6)})
+	q.Run(context.Background())
+
+	if len(fetch.calls) != 1 {
+		t.Fatalf("expected a download, calls %v", fetch.calls)
+	}
+}
+
+func TestNormalizeName(t *testing.T) {
+	cases := map[string]string{
+		"Pokemon - Emerald Version (USA, Europe)": "pokemon emerald version",
+		"Donkey Kong 64 (U) [!]":                  "donkey kong 64",
+		"Donkey_Kong_64_U_":                       "donkey kong 64 u",
+		"  Super   Mario-Land  ":                  "super mario land",
+		"(Unl)":                                   "",
+	}
+	for in, want := range cases {
+		if got := normalizeName(in); got != want {
+			t.Errorf("normalizeName(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
