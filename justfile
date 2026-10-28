@@ -18,9 +18,10 @@ build:
 
 # Push the binary + font to the device and run it (SSH password via SSHPASS, default root).
 deploy: build
-    SSHPASS=${SSHPASS:-root} sshpass -e ssh root@muos.local 'mkdir -p /mnt/mmc/MUOS/application/birdROMs/assets/fonts'
+    SSHPASS=${SSHPASS:-root} sshpass -e ssh root@muos.local 'mkdir -p /mnt/mmc/MUOS/application/birdROMs/assets/fonts /mnt/mmc/MUOS/application/birdROMs/glyph'
     SSHPASS=${SSHPASS:-root} sshpass -e scp dist/birdroms root@muos.local:/mnt/mmc/MUOS/application/birdROMs/birdroms
     SSHPASS=${SSHPASS:-root} sshpass -e scp assets/fonts/ChakraPetch-Bold.ttf root@muos.local:/mnt/mmc/MUOS/application/birdROMs/assets/fonts/
+    SSHPASS=${SSHPASS:-root} sshpass -e scp package/glyph/birdroms.svg root@muos.local:/mnt/mmc/MUOS/application/birdROMs/glyph/
     SSHPASS=${SSHPASS:-root} sshpass -e scp package/mux_launch.sh package/mux_lang.ini root@muos.local:/mnt/mmc/MUOS/application/birdROMs/
     SSHPASS=${SSHPASS:-root} sshpass -e ssh root@muos.local 'chmod +x /mnt/mmc/MUOS/application/birdROMs/mux_launch.sh /mnt/mmc/MUOS/application/birdROMs/birdroms && sync'
 
@@ -31,9 +32,10 @@ package: build
     stage="$(mktemp -d)"
     trap 'rm -rf "$stage"' EXIT
     app="$stage/birdROMs"
-    mkdir -p "$app/assets/fonts"
+    mkdir -p "$app/assets/fonts" "$app/glyph"
     cp dist/birdroms package/mux_launch.sh package/mux_lang.ini "$app/"
     cp assets/fonts/ChakraPetch-Bold.ttf "$app/assets/fonts/"
+    cp package/glyph/birdroms.svg "$app/glyph/"
     go run ./cmd/mkmuxapp "$stage" dist/birdROMs.muxapp
     echo "wrote dist/birdROMs.muxapp"
 

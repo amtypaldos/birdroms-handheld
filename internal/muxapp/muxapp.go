@@ -23,6 +23,7 @@ var requiredEntries = []string{
 	Prefix + "mux_launch.sh",
 	Prefix + "mux_lang.ini",
 	Prefix + "birdroms",
+	Prefix + "glyph/birdroms.svg",
 	Prefix + "assets/fonts/ChakraPetch-Bold.ttf",
 }
 
