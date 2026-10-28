@@ -338,6 +338,9 @@ func (s *screen) drawCell(rom api.ROM, x, y int32, focused, selected bool) {
 	}
 
 	s.text(s.f.Tiny, s.fit(s.f.Tiny, rom.Title, cellW-12), pickColor(focused), x+6, y+boxH+8)
+	if len(rom.Tags) > 0 {
+		s.text(s.f.Tiny, s.fit(s.f.Tiny, strings.Join(rom.Tags, " · "), cellW-12), theme.Dimmed, x+6, y+boxH+28)
+	}
 
 	if selected {
 		s.outline(theme.Pink, box, 2)

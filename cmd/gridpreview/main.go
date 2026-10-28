@@ -45,6 +45,15 @@ func (fakeServer) ListROMs(platform string, page int) (api.ROMPage, error) {
 	var out []api.ROM
 	for i, t := range titles {
 		r := api.ROM{ID: i + 1, Title: t, Platform: platform, Extension: ".gba"}
+		switch i % 4 { // a mix of tag lines, including none at all
+		case 0:
+			r.Tags = []string{"USA"}
+		case 1:
+			r.Tags = []string{"USA", "Europe", "Rev 1", "Beta"}
+		case 2:
+			r.Tags = []string{"Japan", "Proto"}
+		}
+		r.Filename = t + " (" + strings.Join(r.Tags, ", ") + ").gba"
 		if i%5 != 4 { // every fifth ROM has no cover: placeholder
 			u := "http://example/cover/" + strconv.Itoa(i%5)
 			r.CoverURL = &u
