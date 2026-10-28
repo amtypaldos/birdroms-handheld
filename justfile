@@ -30,7 +30,7 @@ package: build
     set -euo pipefail
     stage="$(mktemp -d)"
     trap 'rm -rf "$stage"' EXIT
-    app="$stage/application/birdROMs"
+    app="$stage/birdROMs"
     mkdir -p "$app/assets/fonts"
     cp dist/birdroms package/mux_launch.sh package/mux_lang.ini "$app/"
     cp assets/fonts/ChakraPetch-Bold.ttf "$app/assets/fonts/"
