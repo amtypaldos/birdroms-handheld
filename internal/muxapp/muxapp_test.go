@@ -13,6 +13,7 @@ const prefix = "birdROMs/"
 var required = []string{
 	prefix + "assets/fonts/ChakraPetch-Bold.ttf",
 	prefix + "birdroms",
+	prefix + "glyph/birdroms.svg",
 	prefix + "mux_lang.ini",
 	prefix + "mux_launch.sh",
 }

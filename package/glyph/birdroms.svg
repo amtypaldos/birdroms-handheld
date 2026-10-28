@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="80" height="80" viewBox="0 0 80 80" role="img" version="1.1" xmlns="http://www.w3.org/2000/svg">
+  <title>birdROMs icon</title>
+  <desc>birdROMs: a small bird, black on transparent</desc>
+  <!-- tail, body, head, beak -->
+  <polygon points="6,28 24,40 8,48" fill="#000"/>
+  <ellipse cx="36" cy="44" rx="23" ry="17" fill="#000"/>
+  <circle cx="58" cy="31" r="12" fill="#000"/>
+  <polygon points="68,28 79,33 68,37" fill="#000"/>
+  <!-- eye and wing cut-outs -->
+  <circle cx="61" cy="29" r="2.6" fill="#fff"/>
+  <path d="M20 44 Q32 32 46 44 Q34 54 20 44 Z" fill="none" stroke="#fff" stroke-width="2.5" stroke-linejoin="round"/>
+  <!-- legs -->
+  <path d="M32 60 V71 M42 60 V71 M28 71 H36 M38 71 H46" fill="none" stroke="#000" stroke-width="3" stroke-linecap="round"/>
+</svg>
