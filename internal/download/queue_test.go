@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -715,5 +716,111 @@ func TestNewROMStillGoesToTheTargetWhenOtherStoragesLackIt(t *testing.T) {
 
 	if got := readFile(t, filepath.Join(target, "Roms", "N64", "Bomberman 64.z64")); got != "abcdef" {
 		t.Fatalf("downloaded file = %q", got)
+	}
+}
+
+func TestArtHookGetsFolderAndOnDiskName(t *testing.T) {
+	mount := t.TempDir()
+	type call struct{ dir, file string }
+	var calls []call
+	var mu sync.Mutex
+	roms := []api.ROM{
+		{ID: 1, Title: "Zelda", Platform: "Game Boy Advance", Extension: ".gba", Filename: "Zelda (USA).gba"},
+		{ID: 2, Title: "Other", Platform: "Game Boy Advance", Extension: ".gba", Filename: "Zelda (USA).gba"}, // collides -> -<id>
+	}
+	q := New(&fakeFetcher{fn: body("rom")}, mount, roms)
+	q.Art = func(r api.ROM, dir, file string) error {
+		mu.Lock()
+		calls = append(calls, call{dir, file})
+		mu.Unlock()
+		return nil
+	}
+	q.Run(context.Background())
+	if len(calls) != 2 {
+		t.Fatalf("art calls: %v", calls)
+	}
+	got := map[call]bool{calls[0]: true, calls[1]: true}
+	for _, want := range []call{{"GBA", "Zelda (USA).gba"}, {"GBA", "Zelda (USA)-2.gba"}} {
+		if !got[want] {
+			t.Errorf("missing art call %v in %v", want, calls)
+		}
+		if _, err := os.Stat(filepath.Join(mount, "Roms", want.dir, want.file)); err != nil {
+			t.Errorf("art named for a file that is not on disk: %v", err)
+		}
+	}
+}
+
+func TestArtHookNotCalledWhenNothingWasDownloaded(t *testing.T) {
+	mount := t.TempDir()
+	called := false
+	rom := gba(1, "Zelda")
+	f := &fakeFetcher{fn: func(int, int64, io.Writer, func(int64)) error { return errors.New("boom") }}
+	q := New(f, mount, []api.ROM{rom})
+	q.Art = func(api.ROM, string, string) error { called = true; return nil }
+	q.Run(context.Background())
+	if called || q.Snapshot()[0].Status != Failed {
+		t.Errorf("art called=%v status=%v", called, q.Snapshot()[0].Status)
+	}
+}
+
+func TestArtFailureDoesNotFailTheDownload(t *testing.T) {
+	mount := t.TempDir()
+	q := New(&fakeFetcher{fn: body("rom")}, mount, []api.ROM{gba(1, "Zelda")})
+	q.Art = func(api.ROM, string, string) error { return errors.New("no art for you") }
+	q.Run(context.Background())
+	if it := q.Snapshot()[0]; it.Status != Done || it.Err != "" {
+		t.Errorf("item %+v", it)
+	}
+}
+
+func TestSlowArtDoesNotHoldUpNextDownload(t *testing.T) {
+	mount := t.TempDir()
+	release := make(chan struct{})
+	started := make(chan struct{}, 1)
+	secondDownloaded := make(chan struct{})
+	f := &fakeFetcher{fn: func(id int, _ int64, w io.Writer, _ func(int64)) error {
+		if id == 2 {
+			close(secondDownloaded)
+		}
+		_, err := io.WriteString(w, "rom")
+		return err
+	}}
+	q := New(f, mount, []api.ROM{gba(1, "One"), gba(2, "Two")})
+	q.ArtWait = time.Minute
+	q.Art = func(r api.ROM, _, _ string) error {
+		if r.ID == 1 {
+			started <- struct{}{}
+			<-release
+		}
+		return nil
+	}
+	done := make(chan struct{})
+	go func() { q.Run(context.Background()); close(done) }()
+	<-started
+	select {
+	case <-secondDownloaded:
+	case <-time.After(5 * time.Second):
+		t.Fatal("second download waited for the first ROM's art")
+	}
+	select {
+	case <-done:
+		t.Fatal("Run returned before the art finished")
+	case <-time.After(50 * time.Millisecond):
+	}
+	close(release)
+	<-done
+}
+
+func TestRunStopsWaitingForStuckArt(t *testing.T) {
+	mount := t.TempDir()
+	block := make(chan struct{})
+	defer close(block)
+	q := New(&fakeFetcher{fn: body("rom")}, mount, []api.ROM{gba(1, "One")})
+	q.ArtWait = 50 * time.Millisecond
+	q.Art = func(api.ROM, string, string) error { <-block; return nil }
+	start := time.Now()
+	q.Run(context.Background())
+	if time.Since(start) > 3*time.Second || !q.Finished() {
+		t.Errorf("Run took %v, finished=%v", time.Since(start), q.Finished())
 	}
 }
