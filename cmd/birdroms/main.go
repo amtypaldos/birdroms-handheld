@@ -16,6 +16,7 @@ import (
 	"github.com/veandco/go-sdl2/ttf"
 
 	"github.com/amtypaldos/birdroms-handheld/internal/api"
+	"github.com/amtypaldos/birdroms-handheld/internal/boxart"
 	"github.com/amtypaldos/birdroms-handheld/internal/browse"
 	"github.com/amtypaldos/birdroms-handheld/internal/config"
 	"github.com/amtypaldos/birdroms-handheld/internal/download"
@@ -130,6 +131,24 @@ func run() error {
 			q := download.New(dlClient, romMount, roms)
 			// Every storage the launcher found, for the already-there check.
 			q.SetLibraries(filepath.SplitList(os.Getenv("BIRDROMS_ROM_MOUNTS"))...)
+			// Box art for muOS's game list. Uses the browse client (10s
+			// timeout) so a slow cover cannot hang the process.
+			art := boxart.Default(append(filepath.SplitList(os.Getenv("BIRDROMS_ROM_MOUNTS")), romMount), os.Getenv, client.GetCover)
+			q.Art = func(rom api.ROM, dir, file string) error {
+				if rom.CoverURL == nil {
+					return nil
+				}
+				res, err := art.Save(dir, file, *rom.CoverURL)
+				switch {
+				case err != nil:
+					return err
+				case res.Path != "":
+					log.Printf("box art: wrote %s", res.Path)
+				default:
+					log.Printf("box art: skipped %s/%s: %s", dir, file, res.Skip)
+				}
+				return nil
+			}
 			return downloadui.Show(r, downloadui.Fonts{Mid: mid, Small: small, Tiny: tiny}, q, client) == downloadui.Quit
 		}
 		switch browseui.Show(r, browseui.Fonts{Small: small, Tiny: tiny}, browse.New(client), client, dl) {

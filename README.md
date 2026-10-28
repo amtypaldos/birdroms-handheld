@@ -27,6 +27,10 @@ just deploy    # dev only: build + push into the app folder on a device over SSH
 
 Then launch **birdROMs** from muOS Applications. The app writes `birdroms.log` next to the binary.
 
+## Box art
+
+After a ROM downloads, its cover is saved where muOS shows box art: `<catalogue>/<catalogue name>/box/<ROM file name without extension>.png` (named after the file on the card, so it matches the saved original filename). The catalogue is `/run/muos/storage/info/catalogue` (else `<ROM storage>/MUOS/info/catalogue`). The catalogue name is read from muOS's own assignment (`/opt/muos/share/info/content/<FOLDER>/core.cfg` line 3, or a per-ROM cfg line 4); a folder with no assignment falls back to muOS's `info/manifest/assign.json` table, and only if that catalogue folder already exists. Existing art is never replaced, art is written atomically, covers over 600 px are scaled down, and any failure is only logged. Folders muOS has no catalogue for (e.g. `_UNSORTED`) get no art. Override paths for testing with `BIRDROMS_CATALOGUE_DIR` / `BIRDROMS_CONTENT_DIR`.
+
 ## Device facts
 
 See [docs/b1-device-recon.md](docs/b1-device-recon.md).

@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"github.com/amtypaldos/birdroms-handheld/internal/api"
 	"github.com/amtypaldos/birdroms-handheld/internal/platforms"
@@ -70,6 +71,16 @@ type Queue struct {
 	// logged and does not fail the download.
 	Refresh func(dir string) error
 
+	// Art, when set, is called after a ROM was downloaded and renamed into
+	// place, with the muOS folder name and the file name on the card (the name
+	// muOS keys box art to). It runs in its own goroutine so it never delays
+	// the next download; an error is only logged. Run waits up to ArtWait for
+	// pending calls before it returns. ROMs skipped as already there get no call.
+	Art func(rom api.ROM, dir, fileName string) error
+	// ArtWait bounds how long Run waits for pending Art calls (default 10s).
+	ArtWait time.Duration
+
+	art   sync.WaitGroup
 	f     Fetcher
 	mount string
 	// libs are other ROM storages (e.g. the SD card when downloads go to the
@@ -132,6 +143,7 @@ func (q *Queue) Finished() bool {
 // Pending. Call it once.
 func (q *Queue) Run(ctx context.Context) {
 	defer func() {
+		q.waitArt()
 		q.mu.Lock()
 		q.finished = true
 		q.mu.Unlock()
@@ -141,6 +153,35 @@ func (q *Queue) Run(ctx context.Context) {
 			return
 		}
 		q.runOne(ctx, i)
+	}
+}
+
+func (q *Queue) startArt(rom api.ROM, dir, file string) {
+	if q.Art == nil {
+		return
+	}
+	q.art.Add(1)
+	go func() {
+		defer q.art.Done()
+		if err := q.Art(rom, dir, file); err != nil {
+			log.Printf("download: box art for %s/%s: %v", dir, file, err)
+		}
+	}()
+}
+
+// waitArt gives pending Art calls a bounded time to finish so the process
+// does not exit mid-write; a stuck one is abandoned (its temp file is dot-named).
+func (q *Queue) waitArt() {
+	d := q.ArtWait
+	if d <= 0 {
+		d = 10 * time.Second
+	}
+	done := make(chan struct{})
+	go func() { q.art.Wait(); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(d):
+		log.Printf("download: gave up waiting for box art")
 	}
 }
 
@@ -204,6 +245,7 @@ func (q *Queue) runOne(ctx context.Context, i int) {
 		if rerr := q.Refresh(dir); rerr != nil {
 			log.Printf("download: refresh %s: %v", dir, rerr)
 		}
+		q.startArt(it.ROM, it.Dir, filepath.Base(final))
 	case ctx.Err() != nil:
 		q.update(i, func(it *Item) { it.Status = Cancelled })
 	default:
