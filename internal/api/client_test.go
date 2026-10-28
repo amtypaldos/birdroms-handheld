@@ -346,6 +346,29 @@ func TestGetCoverFetchesAbsoluteURLWithDeviceAuthOnSameHost(t *testing.T) {
 	}
 }
 
+// The server's cover view only has DRF's JSON/HTML renderers, so DRF answers 406 to an Accept that
+// lists images alone. A */* fallback (what browsers send) is what makes it serve the file.
+func TestGetCoverAcceptsAnyTypeSoDRFDoesNotAnswer406(t *testing.T) {
+	img := []byte("\x89PNG-fake-bytes")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.Contains(r.Header.Get("Accept"), "*/*") {
+			w.WriteHeader(http.StatusNotAcceptable)
+			return
+		}
+		w.Write(img)
+	}))
+	defer srv.Close()
+
+	c := New(srv.URL, testToken, nil)
+	got, err := c.GetCover(srv.URL + "/api/roms/1/cover/")
+	if err != nil {
+		t.Fatalf("GetCover: %v", err)
+	}
+	if !bytes.Equal(got, img) {
+		t.Fatalf("got %q", got)
+	}
+}
+
 func TestGetCoverOnOtherHostIsFetchedWithoutTheToken(t *testing.T) {
 	img := []byte("\x89PNG-fake-bytes")
 	// A second httptest server is a different host:port, even on 127.0.0.1.
