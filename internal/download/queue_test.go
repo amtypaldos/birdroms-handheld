@@ -634,3 +634,44 @@ func TestNormalizeName(t *testing.T) {
 		}
 	}
 }
+
+// Titles imported from file names can still carry the extension
+// ("Bomberman 64 (U) [!].z64"); neither the saved name nor the already-there
+// check may be confused by that.
+func TestTitleThatEndsWithTheExtensionIsNotDoubled(t *testing.T) {
+	rom := api.ROM{ID: 6, Title: "Bomberman 64 (U) [!].z64", Platform: "Nintendo 64", Extension: ".z64"}
+	if got, want := Filename(rom), "Bomberman 64 (U) [!].z64"; got != want {
+		t.Fatalf("Filename = %q, want %q", got, want)
+	}
+	if got, want := idFilename(rom), "Bomberman 64 (U) [!]-6.z64"; got != want {
+		t.Fatalf("idFilename = %q, want %q", got, want)
+	}
+	// Only an extension that really matches is dropped.
+	odd := api.ROM{ID: 7, Title: "Disk 1.z64", Platform: "Nintendo 64", Extension: ".bin"}
+	if got, want := Filename(odd), "Disk 1.z64.bin"; got != want {
+		t.Fatalf("Filename = %q, want %q", got, want)
+	}
+}
+
+func TestOnCardAlreadyWhenTitleCarriesTheExtension(t *testing.T) {
+	mount := t.TempDir()
+	dir := filepath.Join(mount, "Roms", "N64")
+	os.MkdirAll(dir, 0o755)
+	os.WriteFile(filepath.Join(dir, "Bomberman 64 (U) [!].z64"), []byte("abcdef"), 0o644)
+
+	size := int64(6)
+	rom := api.ROM{ID: 6, Title: "Bomberman 64 (U) [!].z64", Platform: "Nintendo 64", Extension: ".z64", SizeBytes: &size}
+	fetch := &fakeFetcher{fn: body("abcdef")}
+	q := New(fetch, mount, []api.ROM{rom})
+	q.Run(context.Background())
+
+	if len(fetch.calls) != 0 {
+		t.Fatalf("downloaded a ROM already on the card: %v", fetch.calls)
+	}
+	if it := q.Snapshot()[0]; it.Status != Done || !it.Skipped {
+		t.Fatalf("item = %+v, want Done and Skipped", it)
+	}
+	if entries, _ := os.ReadDir(dir); len(entries) != 1 {
+		t.Fatalf("a duplicate file was written: %d entries", len(entries))
+	}
+}
