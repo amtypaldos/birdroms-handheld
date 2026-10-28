@@ -437,3 +437,23 @@ func TestListPlaylistsCreatedByIsNumber(t *testing.T) {
 		t.Fatalf("got %+v", got)
 	}
 }
+
+func TestListROMsParsesFilenameAndTags(t *testing.T) {
+	c, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		io.WriteString(w, `{"count": 2, "next": null, "previous": null, "results": [
+			{"id": 1, "title": "Bomberman 64", "platform": "N64", "extension": ".z64", "filename": "Bomberman 64 (U) [!].z64", "tags": ["U", "!"]},
+			{"id": 2, "title": "Old", "platform": "N64", "extension": ".z64"}
+		]}`)
+	})
+	p, err := c.ListROMs("N64", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, b := p.Results[0], p.Results[1]
+	if a.Filename != "Bomberman 64 (U) [!].z64" || len(a.Tags) != 2 || a.Tags[0] != "U" || a.Tags[1] != "!" {
+		t.Fatalf("rom[0] = %+v", a)
+	}
+	if b.Filename != "" || b.Tags != nil {
+		t.Fatalf("old server rom = %+v, want zero values", b)
+	}
+}
