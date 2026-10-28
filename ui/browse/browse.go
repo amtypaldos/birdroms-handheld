@@ -194,6 +194,8 @@ func buttonFromController(b uint8) (input.Button, bool) {
 		return input.A, true
 	case sdl.CONTROLLER_BUTTON_B:
 		return input.B, true
+	case sdl.CONTROLLER_BUTTON_Y:
+		return input.Y, true
 	case sdl.CONTROLLER_BUTTON_START:
 		return input.Start, true
 	case sdl.CONTROLLER_BUTTON_GUIDE:
@@ -306,13 +308,19 @@ func (s *screen) drawGrid(v browse.View) {
 		s.drawCell(v.ROMs[i], x, y, i == v.Focus, v.Selected[v.ROMs[i].ID])
 	}
 
+	yHint := "Y all"
+	if v.AllSelected {
+		yHint = "Y none"
+	}
 	switch {
+	case v.SelectingAll:
+		s.text(s.f.Tiny, "Selecting all"+dots(s.frame), theme.Neon, 28, screenH-26)
 	case v.Err != "":
 		s.text(s.f.Tiny, v.Err, theme.Pink, 28, screenH-26)
 	case len(s.m.Selected()) > 0:
-		s.text(s.f.Tiny, "A select    Start download    B back", theme.Dimmed, 28, screenH-26)
+		s.text(s.f.Tiny, "A select    "+yHint+"    Start download    B back", theme.Dimmed, 28, screenH-26)
 	default:
-		s.text(s.f.Tiny, "A select    B back", theme.Dimmed, 28, screenH-26)
+		s.text(s.f.Tiny, "A select    "+yHint+"    B back", theme.Dimmed, 28, screenH-26)
 	}
 	s.textRight(s.f.Tiny, fmt.Sprintf("%d/%d", v.Focus+1, len(v.ROMs)), theme.Dimmed, screenW-28, screenH-26)
 }
