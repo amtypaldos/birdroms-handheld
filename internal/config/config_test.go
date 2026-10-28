@@ -130,3 +130,35 @@ func TestSaveFailsWhenParentIsAFile(t *testing.T) {
 		t.Fatalf("leftover files: %v", entries)
 	}
 }
+
+func TestWithSeedServerFillsOnlyAMissingURL(t *testing.T) {
+	dir := t.TempDir()
+	seed := filepath.Join(dir, "server.json")
+	if err := os.WriteFile(seed, []byte(`{"server_url": "https://birds.example/"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := WithSeedServer(Config{}, seed); got.ServerURL != "https://birds.example/" {
+		t.Fatalf("empty config got %q", got.ServerURL)
+	}
+	if got := WithSeedServer(Config{ServerURL: "https://mine.example"}, seed); got.ServerURL != "https://mine.example" {
+		t.Fatalf("existing url overwritten: %q", got.ServerURL)
+	}
+	keep := Config{ServerURL: "", DeviceToken: "tok"}
+	if got := WithSeedServer(keep, seed); got.DeviceToken != "tok" {
+		t.Fatal("token lost")
+	}
+}
+
+func TestWithSeedServerIgnoresMissingOrBrokenSeed(t *testing.T) {
+	dir := t.TempDir()
+	if got := WithSeedServer(Config{}, filepath.Join(dir, "nope.json")); got.ServerURL != "" {
+		t.Fatalf("missing seed gave %q", got.ServerURL)
+	}
+	bad := filepath.Join(dir, "bad.json")
+	if err := os.WriteFile(bad, []byte("{not json"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := WithSeedServer(Config{}, bad); got.ServerURL != "" {
+		t.Fatalf("broken seed gave %q", got.ServerURL)
+	}
+}

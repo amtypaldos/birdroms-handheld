@@ -74,3 +74,27 @@ func Save(path string, c Config) error {
 	}
 	return nil
 }
+
+// WithSeedServer fills a missing ServerURL from the seed file the website
+// bakes into the downloaded app (server.json, {"server_url": "..."}). The
+// device has no keyboard, so this is how a fresh install learns its server.
+// It is a separate file from config.json so an app update (which rewrites the
+// seed) never touches the pairing token. A missing or unreadable seed is
+// ignored.
+func WithSeedServer(c Config, seedPath string) Config {
+	if c.ServerURL != "" {
+		return c
+	}
+	raw, err := os.ReadFile(seedPath)
+	if err != nil {
+		return c
+	}
+	var seed struct {
+		ServerURL string `json:"server_url"`
+	}
+	if json.Unmarshal(raw, &seed) != nil {
+		return c
+	}
+	c.ServerURL = seed.ServerURL
+	return c
+}
