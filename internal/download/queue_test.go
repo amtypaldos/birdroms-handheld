@@ -675,3 +675,45 @@ func TestOnCardAlreadyWhenTitleCarriesTheExtension(t *testing.T) {
 		t.Fatalf("a duplicate file was written: %d entries", len(entries))
 	}
 }
+
+// muOS can have its "ROM storage" set to one card while the library lives on another, and it
+// merges all of them in its game list. A ROM present on any known card is already there.
+func TestAlreadyThereOnAnotherStorageIsNotDownloadedAgain(t *testing.T) {
+	target, library := t.TempDir(), t.TempDir()
+	dir := filepath.Join(library, "Roms", "N64")
+	os.MkdirAll(dir, 0o755)
+	os.WriteFile(filepath.Join(dir, "Bomberman 64 (U) [!].z64"), []byte("abcdef"), 0o644)
+
+	size := int64(6)
+	rom := api.ROM{ID: 6, Title: "Bomberman 64", Platform: "Nintendo 64", Extension: ".z64", SizeBytes: &size}
+	fetch := &fakeFetcher{fn: body("abcdef")}
+	q := New(fetch, target, []api.ROM{rom})
+	q.SetLibraries(library)
+	q.Run(context.Background())
+
+	if len(fetch.calls) != 0 {
+		t.Fatalf("downloaded a ROM that is on another card: %v", fetch.calls)
+	}
+	it := q.Snapshot()[0]
+	if it.Status != Done || !it.Skipped {
+		t.Fatalf("item = %+v, want Done and Skipped", it)
+	}
+	if exists(filepath.Join(target, "Roms")) {
+		t.Fatal("something was created on the target card although nothing was downloaded")
+	}
+}
+
+func TestNewROMStillGoesToTheTargetWhenOtherStoragesLackIt(t *testing.T) {
+	target, library := t.TempDir(), t.TempDir()
+	os.MkdirAll(filepath.Join(library, "Roms", "N64"), 0o755)
+	size := int64(6)
+	rom := api.ROM{ID: 6, Title: "Bomberman 64", Platform: "Nintendo 64", Extension: ".z64", SizeBytes: &size}
+	fetch := &fakeFetcher{fn: body("abcdef")}
+	q := New(fetch, target, []api.ROM{rom})
+	q.SetLibraries(library, "", target) // blanks and the target itself are harmless
+	q.Run(context.Background())
+
+	if got := readFile(t, filepath.Join(target, "Roms", "N64", "Bomberman 64.z64")); got != "abcdef" {
+		t.Fatalf("downloaded file = %q", got)
+	}
+}
