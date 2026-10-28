@@ -55,8 +55,11 @@ type Item struct {
 	Total   int64 // ROM size if the server reported it, else 0
 	Dir     string
 	Known   bool
-	Skipped bool // the final file already existed; nothing was downloaded
-	Err     string
+	Skipped bool // the ROM was already on the card; nothing was downloaded
+	// Existing is the card's file name when Skipped matched a differently
+	// named file (e.g. "Zelda (USA).gba" for the ROM titled "Zelda").
+	Existing string
+	Err      string
 }
 
 // Queue downloads its items one at a time into <romMount>/Roms/<dir>.
@@ -148,6 +151,14 @@ func (q *Queue) runOne(ctx context.Context, i int) {
 	dir := filepath.Join(q.mount, "Roms", it.Dir)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		q.fail(i, err.Error())
+		return
+	}
+	// The card may already hold this ROM under another name (a library copied
+	// over from elsewhere): same extension, same title once tags are ignored,
+	// same size. Never download that again.
+	if name, ok := findExisting(dir, it.ROM); ok {
+		size := *it.ROM.SizeBytes
+		q.update(i, func(it *Item) { it.Status, it.Skipped, it.Existing, it.Written = Done, true, name, size })
 		return
 	}
 	// A file already at the clean name may be a different ROM with the same
