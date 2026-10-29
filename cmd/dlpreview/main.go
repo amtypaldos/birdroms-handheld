@@ -4,6 +4,7 @@
 package main
 
 import (
+	"archive/zip"
 	"bytes"
 	"context"
 	"errors"
@@ -24,6 +25,7 @@ import (
 
 	"github.com/amtypaldos/birdroms-handheld/internal/api"
 	"github.com/amtypaldos/birdroms-handheld/internal/download"
+	"github.com/amtypaldos/birdroms-handheld/internal/update"
 	downloadui "github.com/amtypaldos/birdroms-handheld/ui/download"
 )
 
@@ -77,6 +79,7 @@ func main() {
 	fontPath := flag.String("font", "assets/fonts/ChakraPetch-Bold.ttf", "font file")
 	shotDir := flag.String("shots", "", "write PNGs of the frames listed in -at into this directory, then exit")
 	at := flag.String("at", "150,600", "comma-separated frame numbers to capture")
+	updating := flag.Bool("update", false, "show the app update screen (a fake package, staged in a temp dir) instead of a ROM queue")
 	flag.Parse()
 
 	if err := sdl.Init(sdl.INIT_VIDEO); err != nil {
@@ -156,6 +159,14 @@ func main() {
 		}
 	}
 	srv := fakeServer{bytesPerSec: *speed}
+	if *updating {
+		pkg := fakePackage()
+		appDir, _ := os.MkdirTemp("", "dlpreview-app")
+		defer os.RemoveAll(appDir)
+		job := update.NewJob(fakeUpdate{srv: srv, pkg: pkg}, appDir, "preview", int64(len(pkg)))
+		downloadui.ShowUpdate(r, downloadui.Fonts{Mid: mid, Small: small, Tiny: tiny}, job)
+		return
+	}
 	q := download.New(srv, mount, roms)
 	downloadui.Show(r, downloadui.Fonts{Mid: mid, Small: small, Tiny: tiny}, q, srv)
 }
@@ -181,4 +192,46 @@ func shot(r *sdl.Renderer, path string) {
 	}
 	defer f.Close()
 	png.Encode(f, img)
+}
+
+// fakeUpdate serves an in-memory package at the fake server's speed.
+type fakeUpdate struct {
+	srv fakeServer
+	pkg []byte
+}
+
+func (f fakeUpdate) DownloadHandheld(ctx context.Context, w io.Writer, progress func(int64)) error {
+	chunk := f.srv.bytesPerSec / 20
+	for written := 0; written < len(f.pkg); {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(50 * time.Millisecond):
+		}
+		end := written + chunk
+		if end > len(f.pkg) {
+			end = len(f.pkg)
+		}
+		if _, err := w.Write(f.pkg[written:end]); err != nil {
+			return err
+		}
+		written = end
+		if progress != nil {
+			progress(int64(written))
+		}
+	}
+	return nil
+}
+
+// fakePackage is a valid, uncompressed .muxapp of about 9 MB so the progress
+// bar has something to fill.
+func fakePackage() []byte {
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	for name, size := range map[string]int{"birdROMs/birdroms": 8 << 20, "birdROMs/mux_launch.sh": 4 << 10} {
+		w, _ := zw.CreateHeader(&zip.FileHeader{Name: name, Method: zip.Store})
+		w.Write(make([]byte, size))
+	}
+	zw.Close()
+	return buf.Bytes()
 }

@@ -42,6 +42,7 @@ Friends download `birdROMs.muxapp` from the **Handheld** page of their birdROMs 
 1. **Pair.** On first launch the app shows a QR code and a short code. Scan the QR code with your phone, sign in to the birdROMs server and approve the device. The server address comes from the `BIRDROMS_SERVER` environment variable or `server_url` in `config.json` next to the binary. The resulting device token is stored in `config.json` (mode 0600); it is read-only and the server owner can revoke it.
 2. **Browse** playlists and platforms (cover-art grid, one square tile per ROM).
 3. **Select and download.** Selected ROMs download one at a time into `Roms/<SYSTEM>` on the card, using the original file name so saves and states keep working. Platforms muOS has no folder for go to `Roms/_UNSORTED`.
+4. **Updates.** The app updates itself from the server it is paired with (never GitHub) when it opens, then restarts; `config.json` is left alone.
 
 | Button | Action |
 | --- | --- |

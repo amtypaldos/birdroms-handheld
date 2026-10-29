@@ -21,6 +21,7 @@ import (
 	"github.com/amtypaldos/birdroms-handheld/internal/config"
 	"github.com/amtypaldos/birdroms-handheld/internal/download"
 	"github.com/amtypaldos/birdroms-handheld/internal/pair"
+	"github.com/amtypaldos/birdroms-handheld/internal/update"
 	"github.com/amtypaldos/birdroms-handheld/internal/version"
 	browseui "github.com/amtypaldos/birdroms-handheld/ui/browse"
 	downloadui "github.com/amtypaldos/birdroms-handheld/ui/download"
@@ -127,6 +128,9 @@ func run() error {
 			log.Printf("BIRDROMS_ROM_MOUNT is not set; downloads will fail")
 		}
 		dlClient := api.New(cfg.ServerURL, cfg.DeviceToken, download.HTTPClient())
+		if selfUpdate(r, downloadui.Fonts{Mid: mid, Small: small, Tiny: tiny}, client, dlClient) {
+			return nil // staged: exit 0 so mux_launch.sh swaps the binary and restarts
+		}
 		dl := func(roms []api.ROM) bool {
 			q := download.New(dlClient, romMount, roms)
 			// Every storage the launcher found, for the already-there check.
@@ -190,4 +194,50 @@ func firstRun(r *sdl.Renderer, f pairui.Fonts) pairui.Outcome {
 		Client:     &http.Client{Timeout: 10 * time.Second},
 	}, tr)
 	return pairui.Show(r, f, tr, cancel)
+}
+
+// selfUpdate checks the paired server for a newer app package and, if there
+// is one, downloads and stages it behind the updating screen. It returns true
+// when an update is staged (or the window was closed): the caller must exit 0
+// so mux_launch.sh can move birdroms.new into place and start the app again.
+// Any failure is logged and the installed app carries on. Checked once per
+// launch, after pairing. A dev build never updates itself.
+func selfUpdate(r *sdl.Renderer, f downloadui.Fonts, info *api.Client, dl *api.Client) bool {
+	if version.Version == "dev" {
+		return false
+	}
+	dir := appDir()
+	remote, err := info.GetHandheldInfo()
+	if err != nil {
+		log.Printf("update: check failed: %v", err)
+		return false
+	}
+	installed, err := update.ReadStamp(dir)
+	if err != nil {
+		log.Printf("update: read %s: %v", update.StampName, err)
+		return false
+	}
+	if !update.NeedsUpdate(installed, remote.SHA256, remote.Available) {
+		log.Printf("update: up to date")
+		return false
+	}
+	log.Printf("update: installing package %.12s (have %.12s)", remote.SHA256, installed)
+	job := update.NewJob(dl, dir, remote.SHA256, remote.Size)
+	if downloadui.ShowUpdate(r, f, job) == downloadui.Quit {
+		return true
+	}
+	if update.Ready(dir) {
+		return true
+	}
+	log.Printf("update: not applied; starting the installed app")
+	return false
+}
+
+// appDir is the folder holding the running binary (mux_launch.sh cds there too).
+func appDir() string {
+	exe, err := os.Executable()
+	if err != nil {
+		return "."
+	}
+	return filepath.Dir(exe)
 }

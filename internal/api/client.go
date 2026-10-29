@@ -122,6 +122,40 @@ func (c *Client) GetPlaylist(id int) (PlaylistDetail, error) {
 	return out, nil
 }
 
+// HandheldInfo describes the app package the server publishes. SHA256 is the
+// hash of the stored package, before a download adds this server's server.json.
+type HandheldInfo struct {
+	Available   bool   `json:"available"`
+	Filename    string `json:"filename"`
+	Size        int64  `json:"size"`
+	SHA256      string `json:"sha256"`
+	PublishedAt string `json:"published_at"`
+}
+
+// GetHandheldInfo returns what the server publishes for handhelds.
+func (c *Client) GetHandheldInfo() (HandheldInfo, error) {
+	var out HandheldInfo
+	if err := c.getJSON("/api/handheld/", nil, &out); err != nil {
+		return HandheldInfo{}, err
+	}
+	return out, nil
+}
+
+// DownloadHandheld streams the personalized app package (the published one
+// plus server.json) into w, reporting cumulative bytes like DownloadROM.
+func (c *Client) DownloadHandheld(ctx context.Context, w io.Writer, progress func(written int64)) error {
+	const path = "/api/handheld/download/"
+	resp, err := c.doGet(ctx, c.base+path, path, "application/zip, application/octet-stream", 0, true)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if _, err := io.Copy(&countingWriter{w: w, cb: progress}, resp.Body); err != nil {
+		return fmt.Errorf("api: download handheld: %w", err)
+	}
+	return nil
+}
+
 // MaxCoverBytes caps a cover download; a larger body is an error rather than
 // being buffered whole on a memory-poor handheld.
 const MaxCoverBytes = 4 << 20

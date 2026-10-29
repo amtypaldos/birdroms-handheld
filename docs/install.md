@@ -16,7 +16,9 @@ Pick games with **A**, then **Start** to download. **L1** pages up and **R1** pa
 
 ![Download screen](images/download.png)
 
-To update, download the file again and replace it in `ARCHIVE`, then repeat step 3. You stay signed in.
+The app updates itself the next time it opens: it shows the download screen below while it fetches the new version, then restarts. You stay signed in.
+
+![Update screen](images/update.png)
 
 **Problems?** If the app says "No server configured", download the file again from the website's **Handheld**
 page. If the page says the app is not published, ask whoever runs the server.
