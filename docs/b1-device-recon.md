@@ -1,6 +1,6 @@
 # B1 — muOS device recon (RG40XX-V), 2026-10-27
 
-Verified over SSH (`root`/`root` @ `muos.local`, password auth only; one transient "Permission denied" seen, retry works).
+Verified over SSH to a device running stock muOS (password auth only; one transient "Permission denied" seen, retry works).
 
 ## Device / OS
 - Board `rg40xx-v`, MustardOS **2606.0 ANDROMEDA**, kernel 4.9.170 aarch64, glibc 2.44 (Buildroot).

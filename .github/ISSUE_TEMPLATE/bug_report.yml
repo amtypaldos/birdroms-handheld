@@ -1,0 +1,33 @@
+name: Bug report
+description: Something in the handheld app does not work
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: And what did you expect instead?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+  - type: input
+    id: device
+    attributes:
+      label: Device and muOS version
+      placeholder: "e.g. RG40XX-V, muOS 2606.0"
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: App version
+      description: The first line of `birdroms.log` in the app folder.
+  - type: textarea
+    id: log
+    attributes:
+      label: Log
+      description: Contents of `birdroms.log`. Remove your server address and any tokens first.
+      render: text
