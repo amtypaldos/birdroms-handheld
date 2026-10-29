@@ -970,3 +970,142 @@ func TestAllSelectedFalseWhilePagesRemain(t *testing.T) {
 		t.Fatal("AllSelected true with unloaded pages")
 	}
 }
+
+// ---- page scrolling (L1 / R1) ----------------------------------------------
+
+func manyPlatforms(n int) *fakeSource {
+	f := standardSource()
+	f.playlists = []api.Playlist{{ID: 5, Name: "Road trip", ROMCount: 3}}
+	f.platforms = nil
+	for i := 0; i < n; i++ {
+		f.platforms = append(f.platforms, fmt.Sprintf("P%02d", i))
+	}
+	return f
+}
+
+func TestHomeR1L1MoveByAPageAndStopAtEnds(t *testing.T) {
+	// rows: 0 hdr, 1 Road trip, 2 hdr, 3..32 P00..P29 (33 rows)
+	m := newHome(t, manyPlatforms(30))
+	cursors := func(bs ...input.Button) []int {
+		var out []int
+		for _, b := range bs {
+			do(t, m, b)
+			out = append(out, m.View().Cursor)
+		}
+		return out
+	}
+	got := cursors(input.R1, input.R1, input.R1, input.R1, input.L1, input.L1, input.L1, input.L1)
+	// 1 -> 12 -> 23 -> 32 (last row) -> 32 (stays); back 21 -> 10 -> 1 (first selectable) -> 1
+	want := []int{12, 23, 32, 32, 21, 10, 1, 1}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("cursor trail = %v, want %v", got, want)
+	}
+}
+
+func TestHomePageLandingOnHeaderSnapsToSelectable(t *testing.T) {
+	// 9 platforms: rows 0 hdr, 1 Road trip, 2 hdr, 3..11 P00..P08.
+	m := newHome(t, manyPlatforms(9))
+	do(t, m, input.R1)
+	if c := m.View().Cursor; c != 11 {
+		t.Fatalf("R1 past the end: cursor = %d, want last row 11", c)
+	}
+	// Target row 11-11 = 0 is the "Playlists" header: L1 snaps to the first selectable row.
+	do(t, m, input.L1)
+	if c := m.View().Cursor; c != 1 {
+		t.Fatalf("L1 onto header: cursor = %d, want 1", c)
+	}
+}
+
+func TestHomePageKeysDoNothingWhileEmptyOrLoading(t *testing.T) {
+	m := newHome(t, &fakeSource{})
+	presses(t, m, input.R1, input.L1)
+	if c := m.View().Cursor; c != -1 {
+		t.Fatalf("cursor = %d, want -1", c)
+	}
+	m = New(standardSource())
+	m.Start() // loading, not run
+	if e := m.Press(input.R1); e.Kind != EffectNone || m.View().Cursor != -1 {
+		t.Fatalf("R1 while loading acted: %+v", e)
+	}
+}
+
+func TestGridR1L1MoveByAPageAndStopAtEnds(t *testing.T) {
+	f := standardSource()
+	f.pages["GBA"] = []api.ROMPage{{Count: 20, Results: roms("GBA", 100, 20)}}
+	m := openGBA(t, f)
+	if GridPage != 8 {
+		t.Fatalf("GridPage = %d, want Cols*VisibleRows = 8", GridPage)
+	}
+	var got []int
+	for _, b := range []input.Button{input.R1, input.R1, input.R1, input.R1, input.L1, input.L1, input.L1, input.L1} {
+		do(t, m, b)
+		got = append(got, m.View().Focus)
+	}
+	want := []int{8, 16, 19, 19, 11, 3, 0, 0}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("focus trail = %v, want %v", got, want)
+	}
+}
+
+func TestGridPageKeysOnEmptyGridDoNothing(t *testing.T) {
+	m := newHome(t, standardSource())
+	presses(t, m, input.Down, input.Down, input.Down, input.A) // SFC: zero ROMs
+	presses(t, m, input.R1, input.L1)
+	if v := m.View(); v.Focus != 0 || v.Mode != ModeGrid {
+		t.Fatalf("view = %+v", v)
+	}
+}
+
+func TestGridR1IntoLazyZoneRequestsNextPageOnce(t *testing.T) {
+	f := pagedSource(36, 12)
+	m := openFirstPlatform(t, f)
+	e := m.Press(input.R1) // focus 8 = first cell of the last 4 of 12
+	if m.View().Focus != 8 {
+		t.Fatalf("focus = %d, want 8", m.View().Focus)
+	}
+	if e.Kind != EffectNextPage || e.Page != 2 || e.Platform != "GBA" {
+		t.Fatalf("effect = %+v, want next page 2 of GBA", e)
+	}
+	if e2 := m.Press(input.R1); e2.Kind != EffectNone {
+		t.Fatalf("page 2 requested twice while in flight: %+v", e2)
+	}
+	if err := m.Run(e); err != nil {
+		t.Fatal(err)
+	}
+	if n := len(m.View().ROMs); n != 24 {
+		t.Fatalf("loaded = %d, want 24", n)
+	}
+	if n := f.callCount("ListROMs(GBA,2)"); n != 1 {
+		t.Fatalf("page 2 calls = %d: %v", n, f.calls)
+	}
+}
+
+func TestGridR1ChainsThroughPagesAndStopsAtLastROM(t *testing.T) {
+	f := pagedSource(30, 12)
+	m := openFirstPlatform(t, f)
+	for i := 0; i < 10; i++ {
+		do(t, m, input.R1)
+	}
+	if v := m.View(); v.Focus != 29 || len(v.ROMs) != 30 {
+		t.Fatalf("focus %d loaded %d, want 29 / 30", v.Focus, len(v.ROMs))
+	}
+	want := []string{"ListPlaylists", "ListPlatforms", "ListROMs(GBA,1)", "ListROMs(GBA,2)", "ListROMs(GBA,3)"}
+	if !reflect.DeepEqual(f.calls, want) {
+		t.Fatalf("calls = %v, want %v", f.calls, want)
+	}
+	do(t, m, input.L1)
+	if m.View().Focus != 21 {
+		t.Fatalf("focus after L1 = %d, want 21", m.View().Focus)
+	}
+}
+
+func TestPageKeysIgnoredAfterUnauthorized(t *testing.T) {
+	m := openGBA(t, standardSource())
+	m.mu.Lock()
+	m.unauthorized = true
+	m.mu.Unlock()
+	presses(t, m, input.R1)
+	if m.View().Focus != 0 {
+		t.Fatalf("focus moved after revoke")
+	}
+}
