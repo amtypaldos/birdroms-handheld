@@ -58,12 +58,35 @@ const (
 	maxRows      = 5
 )
 
+// Runner is what the screen draws: a *download.Queue of ROMs, or the app
+// update job. Run blocks until the work ends or ctx is cancelled; Snapshot and
+// Finished are read from the SDL thread while it runs.
+type Runner interface {
+	Run(ctx context.Context)
+	Snapshot() []download.Item
+	Finished() bool
+}
+
+var _ Runner = (*download.Queue)(nil)
+
 // Show runs q on its own goroutine and draws it until the user leaves. B (or
 // the menu button) cancels the queue: finished files and the in-flight .part
 // stay, later items stay pending. While the cancel is taking effect the screen
 // keeps drawing; it returns once the queue has stopped. After the queue has
 // finished on its own, B or A returns.
-func Show(r *sdl.Renderer, f Fonts, q *download.Queue, cs CoverSource) Outcome {
+func Show(r *sdl.Renderer, f Fonts, q Runner, cs CoverSource) Outcome {
+	return show(r, f, q, cs, false)
+}
+
+// ShowUpdate is Show for the app update job: the header says UPDATING, the
+// hero hides the ROM-only lines, and a successful run returns by itself
+// (the app is about to exit so the launcher can swap the binary). A failed run
+// stays up with the reason until the user leaves.
+func ShowUpdate(r *sdl.Renderer, f Fonts, job Runner) Outcome {
+	return show(r, f, job, nil, true)
+}
+
+func show(r *sdl.Renderer, f Fonts, q Runner, cs CoverSource, updating bool) Outcome {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	stopped := make(chan struct{})
@@ -72,11 +95,14 @@ func Show(r *sdl.Renderer, f Fonts, q *download.Queue, cs CoverSource) Outcome {
 		q.Run(ctx)
 	}()
 
-	s := &screen{r: r, f: f, rate: download.NewRate(), rateID: -1, hero: newHeroCover(cs)}
+	s := &screen{r: r, f: f, rate: download.NewRate(), rateID: -1, hero: newHeroCover(cs), updating: updating}
 	defer s.hero.release()
 	cancelled, userLeft := false, false
 	for {
 		finished := q.Finished()
+		if updating && finished && !anyFailed(q.Snapshot()) {
+			userLeft = true
+		}
 		leave := func() {
 			if finished {
 				userLeft = true // the summary was read; go back
@@ -122,6 +148,16 @@ func Show(r *sdl.Renderer, f Fonts, q *download.Queue, cs CoverSource) Outcome {
 // on its own keeps the summary on screen until the user leaves; a cancelled one
 // returns as soon as it has actually stopped. Never before the queue goroutine
 // is done, so no download is left running behind browse.
+// anyFailed reports whether any item ended in an error.
+func anyFailed(items []download.Item) bool {
+	for _, it := range items {
+		if it.Status == download.Failed {
+			return true
+		}
+	}
+	return false
+}
+
 func shouldReturn(finished, userLeft, cancelled, stopped bool) bool {
 	if !stopped {
 		return false
@@ -150,6 +186,8 @@ type screen struct {
 	rate   *download.Rate
 	rateID int // ROM id the rate tracker is measuring
 	hero   *heroCover
+	// updating draws the app update job: UPDATING header, no ROM folder line.
+	updating bool
 }
 
 // Palette extras on top of the shared theme.
@@ -187,11 +225,18 @@ func (s *screen) draw(items []download.Item, finished, cancelled bool) {
 
 	// Header: label, counter and the overall bar.
 	label := "DOWNLOADING"
+	if s.updating {
+		label = "UPDATING"
+	}
 	switch {
 	case cancelled && !finished:
 		label = "STOPPING" + strings.Repeat(".", (s.frame/20)%4)
+	case finished && failed > 0 && s.updating:
+		label = "UPDATE FAILED"
 	case finished && failed > 0:
 		label = "FINISHED WITH ERRORS"
+	case finished && s.updating:
+		label = "UPDATED"
 	case finished:
 		label = "ALL DONE"
 	}
@@ -279,7 +324,9 @@ func (s *screen) drawHero(it download.Item) {
 	}
 
 	folder, fcol := "Roms/"+it.Dir, theme.Dimmed
-	if !it.Known {
+	if s.updating {
+		folder = ""
+	} else if !it.Known {
 		folder, fcol = "unknown platform -> Roms/"+it.Dir, theme.Pink
 	}
 	if tags != "" && l2 != "" { // two-line title: tags follow the folder
@@ -333,6 +380,12 @@ func (s *screen) drawSummary(items []download.Item, fetched, skipped, failed int
 	}
 	x := int32(margin + 14 + coverBox + 18)
 	head := fmt.Sprintf("%d new", fetched)
+	if s.updating {
+		head = "Updated"
+		if failed > 0 {
+			head = "Not updated"
+		}
+	}
 	if !finished {
 		head = "Stopped"
 	}
@@ -341,6 +394,12 @@ func (s *screen) drawSummary(items []download.Item, fetched, skipped, failed int
 	line := func(str string, c sdl.Color) {
 		s.text(s.f.Small, str, c, x, y)
 		y += 30
+	}
+	if s.updating {
+		if failed > 0 {
+			line("Starting the installed app", theme.Dimmed)
+		}
+		return
 	}
 	line(fmt.Sprintf("%d already there", skipped), theme.Dimmed)
 	if failed > 0 {
@@ -480,6 +539,8 @@ func (s *screen) drawCover(x, y int32) {
 	s.fill(track, &sdl.Rect{X: x, Y: y, W: coverBox, H: coverBox})
 	if s.hero.tex != nil {
 		s.r.Copy(s.hero.tex, nil, &sdl.Rect{X: x + (coverBox-s.hero.w)/2, Y: y + (coverBox-s.hero.h)/2, W: s.hero.w, H: s.hero.h})
+	} else if s.updating {
+		s.text(s.f.Small, "birdROMs", theme.Dimmed, x+coverBox/2-52, y+coverBox/2-14) // no cover for the app itself
 	} else {
 		s.text(s.f.Mid, "?", theme.Dimmed, x+coverBox/2-10, y+coverBox/2-24)
 	}

@@ -9,7 +9,7 @@
 
    The website then offers it on the **Handheld** page and adds `server.json` (the server address) to each
    download. Details: `docs/handheld-app.md` in the server repo.
-3. Tell friends to download it again and reinstall ([install.md](install.md)).
+3. Handhelds that are already paired pick up the published package on their next launch; new friends install it from the website ([install.md](install.md)).
 
 Only if the release does not exist, build it yourself: `just test && just package` (see the README), then
 publish `dist/birdROMs.muxapp` as above.
