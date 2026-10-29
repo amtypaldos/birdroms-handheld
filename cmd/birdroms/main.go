@@ -16,6 +16,7 @@ import (
 	"github.com/veandco/go-sdl2/ttf"
 
 	"github.com/amtypaldos/birdroms-handheld/internal/api"
+	"github.com/amtypaldos/birdroms-handheld/internal/boxart"
 	"github.com/amtypaldos/birdroms-handheld/internal/browse"
 	"github.com/amtypaldos/birdroms-handheld/internal/config"
 	"github.com/amtypaldos/birdroms-handheld/internal/download"
@@ -31,6 +32,8 @@ const (
 	fontPath         = "assets/fonts/ChakraPetch-Bold.ttf"
 	// configPath is relative to the working directory: mux_launch.sh cds to the app dir.
 	configPath = "config.json"
+	// seedPath is written by the website into the downloaded app: which server to pair with.
+	seedPath = "server.json"
 )
 
 func main() {
@@ -128,6 +131,24 @@ func run() error {
 			q := download.New(dlClient, romMount, roms)
 			// Every storage the launcher found, for the already-there check.
 			q.SetLibraries(filepath.SplitList(os.Getenv("BIRDROMS_ROM_MOUNTS"))...)
+			// Box art for muOS's game list. Uses the browse client (10s
+			// timeout) so a slow cover cannot hang the process.
+			art := boxart.Default(append(filepath.SplitList(os.Getenv("BIRDROMS_ROM_MOUNTS")), romMount), os.Getenv, client.GetCover)
+			q.Art = func(rom api.ROM, dir, file string) error {
+				if rom.CoverURL == nil {
+					return nil
+				}
+				res, err := art.Save(dir, file, *rom.CoverURL)
+				switch {
+				case err != nil:
+					return err
+				case res.Path != "":
+					log.Printf("box art: wrote %s", res.Path)
+				default:
+					log.Printf("box art: skipped %s/%s: %s", dir, file, res.Skip)
+				}
+				return nil
+			}
 			return downloadui.Show(r, downloadui.Fonts{Mid: mid, Small: small, Tiny: tiny}, q, client) == downloadui.Quit
 		}
 		switch browseui.Show(r, browseui.Fonts{Small: small, Tiny: tiny}, browse.New(client), client, dl) {
@@ -156,9 +177,9 @@ func firstRun(r *sdl.Renderer, f pairui.Fonts) pairui.Outcome {
 	if cfg.Paired() {
 		return pairui.Paired
 	}
-	server := pair.ResolveServer(os.Getenv("BIRDROMS_SERVER"), cfg)
+	server := pair.ResolveServer(os.Getenv("BIRDROMS_SERVER"), config.WithSeedServer(cfg, seedPath))
 	if server == "" {
-		return pairui.Message(r, f, "No server configured.", "Set BIRDROMS_SERVER (or server_url", "in config.json) and relaunch.")
+		return pairui.Message(r, f, "No server configured.", "Download birdROMs again from your", "friend's birdROMs website (Handheld", "page) and reinstall it.")
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
