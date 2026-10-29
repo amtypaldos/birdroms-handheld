@@ -2,13 +2,15 @@
 #
 #   git tag v0.1.0 && git push origin v0.1.0
 #
-# Run it by hand (workflow_dispatch) to try the build without publishing anything: the release
-# step only runs for tag pushes.
+# A pull request that changes this file (or a manual workflow_dispatch) runs the same build as a dry
+# run: the release step only runs for tag pushes, so nothing is published.
 name: Release
 
 on:
   push:
     tags: ["v*.*.*"]
+  pull_request:
+    paths: [".github/workflows/release.yml"]
   workflow_dispatch:
 
 permissions:
