@@ -23,6 +23,13 @@ import (
 // Cols is the grid width in cells.
 const Cols = 4
 
+// HomeRows is how many home-list rows fit on screen; L1/R1 move the home
+// cursor by this many rows. The home screen draws this many rows too.
+const HomeRows = 11
+
+// GridPage is how many grid cells L1/R1 move the focus: one screen of covers.
+const GridPage = Cols * VisibleRows
+
 // lazyZone is how close to the end of the loaded ROMs the focus must get
 // before the next page is requested.
 const lazyZone = 4
@@ -294,6 +301,10 @@ func (m *Model) pressHome(b input.Button) Effect {
 				break
 			}
 		}
+	case input.L1:
+		m.cursor = pageCursor(rows, m.cursor, -HomeRows)
+	case input.R1:
+		m.cursor = pageCursor(rows, m.cursor, HomeRows)
 	case input.A:
 		if m.cursor < 0 || m.cursor >= len(rows) || !selectable(rows[m.cursor]) {
 			return Effect{}
@@ -336,10 +347,46 @@ func (m *Model) pressGrid(b input.Button) Effect {
 		m.focus = clamp(m.focus-Cols, n)
 	case input.Down:
 		m.focus = clamp(m.focus+Cols, n)
+	case input.L1:
+		m.focus = clamp(m.focus-GridPage, n)
+	case input.R1:
+		m.focus = clamp(m.focus+GridPage, n)
 	default:
 		return Effect{}
 	}
 	return m.lazy()
+}
+
+// pageCursor moves the home cursor by delta rows (negative = up) and lands on
+// the nearest selectable row in that direction; past either end it stops on the
+// first / last selectable row. With no selectable rows it returns cur.
+func pageCursor(rows []Row, cur, delta int) int {
+	if cur < 0 {
+		return cur
+	}
+	t := cur + delta
+	if delta > 0 {
+		for i := t; i < len(rows); i++ {
+			if i >= 0 && selectable(rows[i]) {
+				return i
+			}
+		}
+		for i := len(rows) - 1; i >= 0; i-- {
+			if selectable(rows[i]) {
+				return i
+			}
+		}
+		return cur
+	}
+	for i := t; i >= 0; i-- {
+		if i < len(rows) && selectable(rows[i]) {
+			return i
+		}
+	}
+	if f := firstSelectable(rows); f >= 0 {
+		return f
+	}
+	return cur
 }
 
 // allSelected reports whether the grid is fully loaded and every ROM in it is

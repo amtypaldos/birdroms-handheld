@@ -53,7 +53,7 @@ const (
 	// Home list.
 	homeTop    = 52
 	homeRowH   = 34
-	homeRows   = 11
+	homeRows   = browse.HomeRows
 	homeMargin = 28
 
 	// Grid.
