@@ -6,17 +6,21 @@ On-device client for [birdROMs](https://github.com/amtypaldos/birdROMs): Go + SD
 
 Cross-compiled from macOS to a **dynamic arm64** binary linked against the device's own SDL2/SDL2_ttf (the device ships them; they need glibc >= 2.38, so the target is `aarch64-linux-gnu.2.38`).
 
-Requirements: `go`, `zig` (C cross-compiler), `just`, `sshpass`.
+Requirements: `go`, `zig` (C cross-compiler), `just`; `sshpass` only for `just deploy`.
 
-One-time `sysroot/` (git-ignored), from the device and upstream:
+The build needs a git-ignored `sysroot/` holding the SDL2 / SDL2_ttf headers and shared objects to link against. Pick one:
 
-- `sysroot/lib/`: `libSDL2-2.0.so.0.2800.5`, `libSDL2_ttf-2.0.so.0.2200.0`, `libfreetype.so.6.20.1` copied from the device's `/usr/lib` (plus `libSDL2.so` / `libSDL2_ttf.so` / `libfreetype.so.6` symlinks).
-- `sysroot/include/SDL2/`: headers from SDL 2.28.5 and SDL_ttf 2.22.0 release tarballs.
+- **No device needed (what CI uses):** `scripts/ci-sysroot.sh` downloads the SDL 2.28.5 / SDL_ttf 2.22.0 headers (the versions muOS ships, pinned by SHA-256) and Ubuntu 24.04 arm64 `libSDL2` / `libSDL2_ttf` / `libfreetype` as link stubs. At run time the device's own libraries are used. `scripts/check-glibc.sh dist/birdroms` checks that the result needs no glibc newer than 2.38.
+- **From your device:** copy `libSDL2-2.0.so.*`, `libSDL2_ttf-2.0.so.*` and `libfreetype.so.6*` from the device's `/usr/lib` into `sysroot/lib/` (plus `libSDL2.so` / `libSDL2_ttf.so` symlinks), and the SDL 2.28.5 / SDL_ttf 2.22.0 headers from their release tarballs into `sysroot/include/SDL2/`.
+
+Use another location with `SYSROOT=/path just build`.
 
 ```
-just test      # pure-Go unit tests
+just test      # pure-Go unit tests (`just test-all` also covers the SDL UI packages)
 just build     # dist/birdroms (arm64)
-just deploy    # build + push to /mnt/mmc/MUOS/application/birdROMs on muos.local
+just package   # dist/birdROMs.muxapp (entries rooted at birdROMs/)
+just run       # run natively on your computer (needs SDL2: brew install sdl2 sdl2_ttf pkgconf)
+just deploy    # dev only: build + push into the app folder on a device over SSH (BIRDROMS_DEVICE=<host>, default muos.local)
 ```
 
 Then launch **birdROMs** from muOS Applications. The app writes `birdroms.log` next to the binary.
@@ -24,3 +28,39 @@ Then launch **birdROMs** from muOS Applications. The app writes `birdroms.log` n
 ## Device facts
 
 See [docs/b1-device-recon.md](docs/b1-device-recon.md).
+
+## Install
+
+Friends install the app from a `birdROMs.muxapp` package through the muOS Archive Manager: copy it into an `ARCHIVE/` folder on the card, open **Archive Manager**, pick it, then launch **birdROMs** from Applications. Packages come from this repository's GitHub Releases, or from the **Handheld** page of a birdROMs server (which also tells the app where the server is). Step-by-step instructions: [docs/install.md](docs/install.md).
+
+## Using it
+
+1. **Pair.** On first launch the app shows a QR code and a short code. Scan the QR code with your phone, sign in to the birdROMs server and approve the device. The server address comes from the `BIRDROMS_SERVER` environment variable or `server_url` in `config.json` next to the binary. The resulting device token is stored in `config.json` (mode 0600); it is read-only and the server owner can revoke it.
+2. **Browse** playlists and platforms (cover-art grid, one square tile per ROM).
+3. **Select and download.** Selected ROMs download one at a time into `Roms/<SYSTEM>` on the card, using the original file name so saves and states keep working. Platforms muOS has no folder for go to `Roms/_UNSORTED`.
+
+| Button | Action |
+| --- | --- |
+| D-pad | Move |
+| A | Open / select |
+| Y | Select all / none in the current grid |
+| Start | Download the selection |
+| B | Back / exit |
+| Menu (the muOS guide button) | Leave the app |
+
+On a desktop (`just run`) the keys are: arrows, `Z` = A, `X` = B, `A` = X, `S` = Y, `Q`/`W` = L1/R1, `Enter` = Start, `Esc` = Menu.
+
+`mux_launch.sh` sets `BIRDROMS_ROM_MOUNT` (where ROMs are written) and `BIRDROMS_ROM_MOUNTS` (every storage, used to skip ROMs you already have). The app writes `birdroms.log` next to the binary.
+
+## Releases and CI
+
+- **CI** (`.github/workflows/ci.yml`) runs `gofmt`, `go vet` and `go test ./...`, then cross-builds the arm64 binary with zig against the CI sysroot, checks it needs no glibc newer than 2.38, builds the `.muxapp` and uploads it as a workflow artifact.
+- **Releases:** pushing a tag like `v0.1.0` runs `.github/workflows/release.yml`, which attaches `birdROMs.muxapp` (and its SHA-256) to a GitHub Release.
+
+## Legal
+
+birdROMs does not ship or distribute any ROMs, BIOS files or other copyrighted game content, and this app only downloads what a birdROMs server's owner has chosen to share with you. You are responsible for only storing and sharing content you have the right to use.
+
+## License
+
+MIT, see [LICENSE](LICENSE). The bundled Chakra Petch font is under the SIL Open Font License 1.1 ([assets/fonts/OFL.txt](assets/fonts/OFL.txt)); other third-party notices are in [THIRD_PARTY_NOTICES.txt](THIRD_PARTY_NOTICES.txt) and ship inside the `.muxapp`. See also [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md) and the [Code of Conduct](CODE_OF_CONDUCT.md).
