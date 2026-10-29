@@ -1,0 +1,73 @@
+# birdROMs handheld CI: format, vet, unit tests, and a full arm64 cross-build + .muxapp package.
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  ZIG_VERSION: 0.17.0
+
+jobs:
+  test:
+    name: Format, vet, test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      # go-sdl2 is cgo, so vet and the tests need the SDL2 headers for the runner's own arch.
+      - name: Install SDL2 dev packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libsdl2-dev libsdl2-ttf-dev pkg-config
+      - name: gofmt
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then echo "gofmt needed on:"; echo "$unformatted"; exit 1; fi
+      - name: go vet
+        run: go vet ./...
+      - name: go test
+        run: go test ./...
+
+  build:
+    name: Cross-build arm64 and package
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: ${{ env.ZIG_VERSION }}
+      - uses: extractions/setup-just@v3
+      - name: Link-time sysroot (SDL2 headers + stub libs, no device needed)
+        run: scripts/ci-sysroot.sh sysroot
+      - name: Build dist/birdroms
+        run: just build
+      - name: Binary must not need a glibc newer than muOS provides (2.38)
+        run: scripts/check-glibc.sh dist/birdroms 2.38
+      - name: Package dist/birdROMs.muxapp
+        run: just package
+      - name: Package layout
+        run: |
+          unzip -l dist/birdROMs.muxapp
+          # every entry is rooted at birdROMs/ (what the muOS Archive Manager expects)
+          ! unzip -Z1 dist/birdROMs.muxapp | grep -v '^birdROMs/'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: birdROMs.muxapp
+          path: dist/birdROMs.muxapp
+          if-no-files-found: error
+          retention-days: 14

@@ -25,6 +25,9 @@ var requiredEntries = []string{
 	Prefix + "birdroms",
 	Prefix + "glyph/birdroms.svg",
 	Prefix + "assets/fonts/ChakraPetch-Bold.ttf",
+	Prefix + "assets/fonts/OFL.txt",
+	Prefix + "LICENSE",
+	Prefix + "THIRD_PARTY_NOTICES.txt",
 }
 
 func modeFor(name string) fs.FileMode {

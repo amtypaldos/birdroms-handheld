@@ -1,0 +1,64 @@
+# Builds the arm64 binary and birdROMs.muxapp for a version tag and attaches them to a GitHub Release.
+#
+#   git tag v0.1.0 && git push origin v0.1.0
+#
+# Run it by hand (workflow_dispatch) to try the build without publishing anything: the release
+# step only runs for tag pushes.
+name: Release
+
+on:
+  push:
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  ZIG_VERSION: 0.17.0
+
+jobs:
+  release:
+    name: Build and publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: ${{ env.ZIG_VERSION }}
+      - uses: extractions/setup-just@v3
+      - name: Test
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libsdl2-dev libsdl2-ttf-dev pkg-config
+          go test ./...
+      - name: Link-time sysroot
+        run: scripts/ci-sysroot.sh sysroot
+      - name: Build and package
+        env:
+          VERSION: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || format('0.0.0-{0}', github.sha) }}
+        run: |
+          export VERSION="${VERSION#v}"
+          just package
+          scripts/check-glibc.sh dist/birdroms 2.38
+          cd dist
+          sha256sum birdROMs.muxapp > birdROMs.muxapp.sha256
+          cat birdROMs.muxapp.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: birdROMs.muxapp
+          path: |
+            dist/birdROMs.muxapp
+            dist/birdROMs.muxapp.sha256
+          if-no-files-found: error
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            dist/birdROMs.muxapp
+            dist/birdROMs.muxapp.sha256
