@@ -2,8 +2,6 @@
 
 On-device client for [birdROMs](https://github.com/amtypaldos/birdROMs): Go + SDL2 app for muOS (RG40XX-V first).
 
-**Installing on a handheld?** Follow [docs/install.md](docs/install.md). Publishing a new version for friends: [docs/publishing.md](docs/publishing.md).
-
 ## Build
 
 Cross-compiled from macOS to a **dynamic arm64** binary linked against the device's own SDL2/SDL2_ttf (the device ships them; they need glibc >= 2.38, so the target is `aarch64-linux-gnu.2.38`).
@@ -37,7 +35,7 @@ See [docs/b1-device-recon.md](docs/b1-device-recon.md).
 
 ## Install
 
-Friends install the app from a `birdROMs.muxapp` package through the muOS Archive Manager: copy it into an `ARCHIVE/` folder on the card, open **Archive Manager**, pick it, then launch **birdROMs** from Applications. Packages come from this repository's GitHub Releases, or from the **Handheld** page of a birdROMs server (which also tells the app where the server is). Step-by-step instructions: [docs/install.md](docs/install.md).
+Friends download `birdROMs.muxapp` from the **Handheld** page of their birdROMs server and install it with the muOS Archive Manager: [docs/install.md](docs/install.md). Server owners publish new versions from the GitHub Release: [docs/publishing.md](docs/publishing.md).
 
 ## Using it
 
@@ -49,6 +47,7 @@ Friends install the app from a `birdROMs.muxapp` package through the muOS Archiv
 | --- | --- |
 | D-pad | Move |
 | A | Open / select |
+| L1 / R1 | Page up / down |
 | Y | Select all / none in the current grid |
 | Start | Download the selection |
 | B | Back / exit |
