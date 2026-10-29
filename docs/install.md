@@ -1,59 +1,22 @@
-# Put birdROMs on your handheld
+# Install birdROMs on your handheld
 
-This is for handhelds running **muOS** (Anbernic RG40XX-V, RG35XX+ and similar). It takes about five
-minutes and you do not need to type anything on the handheld. You need: your handheld, its SD card,
-a computer that can read the SD card, and your phone.
+For handhelds running **muOS** (Anbernic RG40XX-V, RG35XX+ and similar).
 
-## 1. Download the app
+1. **Download.** On your computer, sign in to your friend group's birdROMs website, open **Handheld** and
+   download `birdROMs.muxapp`. Don't unzip it. The file already contains the server address.
+2. **Copy.** Put the file in the `ARCHIVE` folder (create it if missing) at the top of the SD card, then put
+   the card back in the handheld.
+3. **Install.** On the handheld: **Applications → Archive Manager → birdROMs → A**.
+4. **Open.** **Applications → birdROMs**. It shows a QR code and a short code: scan the QR code with your
+   phone and approve. If your phone is not signed in, type the code on the website's **Handheld** page instead.
 
-On your computer, open your friend group's birdROMs website and sign in. Click **Handheld** at the top.
-Press **Download birdROMs.muxapp**. You now have one file called `birdROMs.muxapp`. (Do not unzip it.)
+Pick games with **A**, then **Start** to download. **L1** pages up and **R1** pages down.
 
-## 2. Copy it to the SD card
+![Browse grid](images/browse-grid.png)
 
-1. Turn the handheld off, take out the SD card that holds your games (the one named something like
-   `ROMS-RG40`), and plug it into your computer.
-2. Look for a folder named **ARCHIVE** at the very top of the card. If there is no such folder, make
-   one (capital letters, exactly `ARCHIVE`).
-3. Drag `birdROMs.muxapp` into the `ARCHIVE` folder.
-4. Eject the card properly, put it back in the handheld, and turn it on.
+![Download screen](images/download.png)
 
-If your handheld has two cards and you are not sure which one: either works. The games card is the
-easy one to reach.
+To update, download the file again and replace it in `ARCHIVE`, then repeat step 3. You stay signed in.
 
-## 3. Install it on the handheld
-
-1. On the muOS main menu, open **Applications**.
-2. Open **Archive Manager**.
-3. Find **birdROMs** in the list (it may have a short tag in front, like `[SD2-APP]`) and press **A**.
-4. Wait until it says it is done, then press **B** a few times to go back to the main menu.
-
-## 4. Open it and link it to your account
-
-1. In **Applications**, open **birdROMs**.
-2. The handheld shows a **QR code** and a short code. Scan the QR code with your phone camera.
-3. Sign in on your phone if it asks, then press **Approve**.
-4. The handheld moves on by itself. Pick a platform or playlist, choose games (A to tick, Y for all or
-   none) and press **Start**. Games are saved in the right system folders automatically.
-
-That is it. Next time just open **birdROMs** from Applications.
-
-## Updating to a new version
-
-When the person who runs the server tells you there is a new version:
-
-1. Download `birdROMs.muxapp` again from the **Handheld** page.
-2. Copy it into the `ARCHIVE` folder on the card and **replace** the old file.
-3. Do step 3 above again (Applications, Archive Manager, birdROMs).
-
-You stay linked to your account; you do not scan the QR code again.
-
-## If something goes wrong
-
-| What you see | What to do |
-|---|---|
-| No **ARCHIVE** folder or Archive Manager is empty | Check the folder is spelled `ARCHIVE` at the top of the card, not inside another folder, and the file ends in `.muxapp`. |
-| The Handheld page says the app is not published | The server owner needs to publish it first. Ask them. |
-| **birdROMs** is not in Applications after installing | Close and reopen Applications, or restart the handheld. |
-| "No server configured" on the handheld | The file did not come from the website. Download it again from the Handheld page. |
-| The QR code shows up again later | The owner removed your device from the server. Scan it again to re-link. |
+**Problems?** If the app says "No server configured", download the file again from the website's **Handheld**
+page. If the page says the app is not published, ask whoever runs the server.
