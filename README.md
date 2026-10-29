@@ -55,7 +55,7 @@ On a desktop (`just run`) the keys are: arrows, `Z` = A, `X` = B, `A` = X, `S` =
 ## Releases and CI
 
 - **CI** (`.github/workflows/ci.yml`) runs `gofmt`, `go vet` and `go test ./...`, then cross-builds the arm64 binary with zig against the CI sysroot, checks it needs no glibc newer than 2.38, builds the `.muxapp` and uploads it as a workflow artifact.
-- **Releases:** pushing a tag like `v0.1.0` runs `.github/workflows/release.yml`, which attaches `birdROMs.muxapp` (and its SHA-256) to a GitHub Release.
+- **Releases:** pushing a date tag like `v2026.10.28` (`v2026.10.28.1` for a second release that day) runs `.github/workflows/release.yml`, which attaches `birdROMs.muxapp` (and its SHA-256) to a GitHub Release.
 
 ## Legal
 

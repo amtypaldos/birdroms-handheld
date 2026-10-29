@@ -4,7 +4,7 @@ sysroot := env("SYSROOT", justfile_directory() / "sysroot")
 # Where `just deploy` pushes the app (muOS default hostname; set BIRDROMS_DEVICE=<host or ip> to override).
 device := env("BIRDROMS_DEVICE", "muos.local")
 # Version stamped into the binary (releases set VERSION from the tag).
-version := env("VERSION", "0.0.1-dev")
+version := env("VERSION", "dev")
 
 default:
     @just --list

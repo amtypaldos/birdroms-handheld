@@ -2,7 +2,7 @@
 package version
 
 // Version is overridden at build time via -ldflags "-X .../version.Version=...".
-var Version = "0.0.1-dev"
+var Version = "dev"
 
 // String returns the human-readable version banner.
 func String() string {
