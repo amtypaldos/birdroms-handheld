@@ -1,6 +1,16 @@
-/sysroot/
+# Link-time SDL2 sysroot (device libs or scripts/ci-sysroot.sh output); may be a symlink
+/sysroot
+# Build output
 /dist/
+*.muxapp
+# Local worktrees
 /.worktrees/
+# Runtime files written next to the binary (config.json holds the device token)
+config.json
 *.log
+# Env files
+.env
+.env.*
+# OS cruft
 .DS_Store
 ._*

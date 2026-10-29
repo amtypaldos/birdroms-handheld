@@ -11,7 +11,10 @@ import (
 const prefix = "birdROMs/"
 
 var required = []string{
+	prefix + "LICENSE",
+	prefix + "THIRD_PARTY_NOTICES.txt",
 	prefix + "assets/fonts/ChakraPetch-Bold.ttf",
+	prefix + "assets/fonts/OFL.txt",
 	prefix + "birdroms",
 	prefix + "glyph/birdroms.svg",
 	prefix + "mux_lang.ini",
