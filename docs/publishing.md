@@ -1,8 +1,14 @@
 # Publishing a handheld version (server owner)
 
-1. The GitHub Release for the version (tagged like `v2026.10.29.2`) contains `birdROMs.muxapp`.
-2. Tag the **server** repo with the same name. Its image build downloads that file and the
-   container installs it on startup. You do not copy it yourself.
+The handheld app and the server are released on their own. Both use date tags
+(`vYYYY.MM.DD`, or `vYYYY.MM.DD.N` the same day). The server image bundles the release
+named in the server repo's `handheld-version` file, not the server's own tag.
+
+1. Tag this repo (`birdROMs handheld YYYY.MM.DD`). The GitHub Release contains `birdROMs.muxapp`.
+2. In the server repo, set `handheld-version` to that tag. Tag the server
+   (`birdROMs YYYY.MM.DD`) when the image should ship. A site-only server release leaves
+   the pin unchanged. The image build downloads the pinned file and the container installs
+   it on startup. You do not copy it yourself.
 3. To publish by hand instead (in the server repo's `backend/`, or inside the backend container):
 
    ```

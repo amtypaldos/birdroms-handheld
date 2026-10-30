@@ -30,4 +30,15 @@ CI runs the same checks, plus `just package`.
 - **No ROMs, no secrets.** Never commit ROMs, BIOS files, copyrighted game art, tokens or
   `config.json`. Use synthetic data in tests.
 
+## Releases
+
+Tag this repo when the app changes: `vYYYY.MM.DD`, or `vYYYY.MM.DD.N` for another release
+the same day. The tag message is `birdROMs handheld YYYY.MM.DD`. The release workflow
+attaches `birdROMs.muxapp`.
+
+The server image does not follow this tag by name. After the release exists, set
+`handheld-version` in the [birdROMs](https://github.com/amtypaldos/birdROMs) repo to this
+tag and tag that repo when the image should ship. A server release that does not change
+the app leaves the pin alone. Details: [docs/publishing.md](docs/publishing.md).
+
 By contributing you agree that your contributions are licensed under the project's [MIT License](LICENSE).
