@@ -4,6 +4,7 @@
 #include <cerrno>
 #include <cstdio>
 #include <cstring>
+#include <exception>
 #include <fcntl.h>
 #include <filesystem>
 #include <fstream>
@@ -108,7 +109,7 @@ bool present(const fs::path &p) {
   return fs::exists(fs::symlink_status(p, ec));
 }
 } // namespace
-Config load_config(const std::string &path) {
+static Config read_config(const std::string &path) {
   Config c;
   std::ifstream f(path);
   if (!f) {
@@ -136,6 +137,75 @@ Config load_config(const std::string &path) {
     throw std::runtime_error("Malformed configuration");
   }
 }
+// libnx forwards rename to fsFsRenameFile, which cannot replace an existing
+// destination. Recover a complete staged config (or the old backup) if power
+// was lost between the two renames used by save_config below.
+Config load_config(const std::string &path) {
+  safe_path(path);
+  if (fs::exists(path))
+    return read_config(path);
+  std::exception_ptr invalid;
+  for (const auto &suffix : {".tmp", ".bak"}) {
+    const auto candidate = path + suffix;
+    safe_path(candidate);
+    if (!fs::exists(candidate))
+      continue;
+    Config config;
+    try {
+      config = read_config(candidate);
+    } catch (...) {
+      invalid = std::current_exception();
+      continue;
+    }
+    if (std::rename(candidate.c_str(), path.c_str()) != 0)
+      throw std::runtime_error(std::string("Cannot recover configuration: ") +
+                               std::strerror(errno));
+    // Cleanup is optional: a valid primary always takes precedence on load.
+    for (const auto &other : {".tmp", ".bak"}) {
+      const auto stale = path + other;
+      safe_path(stale);
+      std::remove(stale.c_str());
+    }
+    return config;
+  }
+  if (invalid)
+    std::rethrow_exception(invalid);
+  return Config{};
+}
+
+static void replace_config(const std::string &temp, const std::string &path) {
+  const auto backup = path + ".bak";
+  safe_path(backup);
+  if (std::rename(temp.c_str(), path.c_str()) == 0) {
+    std::remove(backup.c_str());
+    return;
+  }
+  const int initial_error = errno;
+  if (initial_error != EEXIST)
+    throw std::runtime_error(std::string("Cannot replace configuration: ") +
+                             std::strerror(initial_error));
+
+  // The live configuration is never deleted. Move it aside only after the
+  // replacement has been fully written and flushed, and restore it on failure.
+  if (std::remove(backup.c_str()) != 0 && errno != ENOENT)
+    throw std::runtime_error(
+        std::string("Cannot clear configuration backup: ") +
+        std::strerror(errno));
+  if (std::rename(path.c_str(), backup.c_str()) != 0)
+    throw std::runtime_error(std::string("Cannot back up configuration: ") +
+                             std::strerror(errno));
+  if (std::rename(temp.c_str(), path.c_str()) != 0) {
+    const int install_error = errno;
+    if (std::rename(backup.c_str(), path.c_str()) != 0)
+      throw std::runtime_error("Cannot replace configuration; recovery files "
+                               "retained. Restart to recover.");
+    throw std::runtime_error(
+        std::string("Cannot replace configuration (previous file restored): ") +
+        std::strerror(install_error));
+  }
+  std::remove(backup.c_str());
+}
+
 void save_config(const std::string &path, const Config &c) {
   base_valid(c.rom_base);
   for (auto &kv : c.platform_dirs)
@@ -173,10 +243,7 @@ void save_config(const std::string &path, const Config &c) {
     std::remove(temp.c_str());
     throw std::runtime_error("Cannot write configuration");
   }
-  if (std::rename(temp.c_str(), path.c_str()) != 0) {
-    std::remove(temp.c_str());
-    throw std::runtime_error("Cannot replace configuration");
-  }
+  replace_config(temp, path);
 }
 std::string filename(const Rom &r) {
   std::string full = sanitize(r.filename);
