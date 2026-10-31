@@ -2,6 +2,9 @@
 #include "types.hpp"
 #include <nlohmann/json.hpp>
 #include <stdexcept>
+#include <sstream>
+#include <iomanip>
+#include <ctime>
 namespace bird::parsing {
 using Json=nlohmann::json;
 inline std::string text(const Json& j,const char* key) {
@@ -28,6 +31,9 @@ inline Page page(const Json& j) {
 inline PairSession session(const Json& j) {
  PairSession s{text(j,"code"),text(j,"qr_url"),text(j,"expires_at")};
  if(s.code.empty()||s.qr_url.empty()||s.expires_at.empty())throw std::runtime_error("Pairing response missing fields");
+ std::tm date{};std::istringstream input(s.expires_at.substr(0,19));
+ input >> std::get_time(&date,"%Y-%m-%dT%H:%M:%S");
+ if(input.fail()||s.expires_at.size()<20)throw std::runtime_error("Invalid pairing expiry timestamp");
  return s;
 }
 inline PollResult poll(long status,const Json& j=Json{}) {
@@ -36,6 +42,7 @@ inline PollResult poll(long status,const Json& j=Json{}) {
  if(status==429)return {PollStatus::RateLimited,{}};
  if(status!=200)throw std::runtime_error("Unexpected pairing status");
  auto token=text(j,"device_token");if(token.empty())throw std::runtime_error("Approval response missing device token");
+ for(unsigned char c:token)if(c<=32||c==127)throw std::runtime_error("Invalid pairing device token");
  return {PollStatus::Approved,token};
 }
 }

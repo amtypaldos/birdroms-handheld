@@ -11,6 +11,8 @@ int main(){using namespace parsing;
  bool bad=false;try{poll(200,Json{{"device_token",""}});}catch(...){bad=true;}assert(bad);
  bad=false;try{rom(Json{{"id",0}});}catch(...){bad=true;}assert(bad);
  bad=false;try{session(Json{{"code","ABC"}});}catch(...){bad=true;}assert(bad);
+ bad=false;try{session(Json{{"code","ABC"},{"qr_url","https://server/pair"},{"expires_at","invalid"}});}catch(...){bad=true;}assert(bad);
+ bad=false;try{poll(200,Json{{"device_token","bad\nheader"}});}catch(...){bad=true;}assert(bad);
  auto s=session(Json{{"code","ABC"},{"qr_url","https://server/pair?code=ABC"},{"expires_at","2026-10-31T00:00:00Z"}});assert(s.code=="ABC");
  std::cout<<"API JSON/pagination/pairing tests passed\n";
 }
