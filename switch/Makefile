@@ -42,10 +42,11 @@ APP_TITLE := birdROMs
 APP_AUTHOR := birdROMs contributors
 APP_VERSION := 0.1.0
 BUILD		:=	build
-SOURCES		:=	source
+SOURCES		:=	source source/api source/ui source/config source/downloads source/platform
 DATA		:=	data
-INCLUDES	:=	include
-#ROMFS	:=	romfs
+INCLUDES	:=	include include/platform
+ROMFS := assets
+ICON := assets/icon.jpg
 
 #---------------------------------------------------------------------------------
 # options for code generation
@@ -62,7 +63,7 @@ CXXFLAGS	:= $(CFLAGS) -std=gnu++17
 ASFLAGS	:=	-g $(ARCH)
 LDFLAGS	=	-specs=$(DEVKITPRO)/libnx/switch.specs -g $(ARCH) -Wl,-Map,$(notdir $*.map)
 
-LIBS	:=	`sdl2-config --libs`
+LIBS := $(shell PKG_CONFIG_PATH=$(PORTLIBS)/lib/pkgconfig pkg-config --static --libs SDL2_image SDL2_ttf) -lcurl -lz -lnx
 
 #---------------------------------------------------------------------------------
 # list of directories containing libraries, this must be the top level containing
