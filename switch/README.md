@@ -99,7 +99,11 @@ folder names; subdirectories, separators and traversal are rejected. The ROM
 base must start `sdmc:/`. Mapping and base directory changes are made by editing
 this file while the application is closed. UI layout is fixed; there are no
 additional UI settings to persist. Version 1 configuration accepts absent
-optional fields, and saves with a temporary file, sync, then rename.
+optional fields, and saves with a temporary file and sync. On Switch, where rename cannot
+replace an existing file, the app backs up the old config before moving the new
+file into place. Failed replacements restore the previous file; interrupted
+replacements recover a valid staged config or backup on the next launch.
+The newly received token stays in memory while saving, and A retries a failed save.
 
 The token is a secret. Do not share config.json. It is not printed in logs or
 embedded in the binary. SD FAT/exFAT filesystems do not enforce Unix permissions.

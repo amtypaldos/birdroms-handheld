@@ -2,6 +2,37 @@
 
 Source implementation: commit `0bb1668` on `feature/nintendo-switch`.
 
+## Alpha.2 pairing persistence fix
+
+Hardware feedback from the first prerelease: initial server config writes
+succeeded, pairing delivered a token, but replacing config.json failed.
+libnx v4.12.0 `nx/source/runtime/devices/fs_dev.c` forwards rename directly to
+`fsFsRenameFile`, which reports EEXIST for an occupied destination. Linux rename
+replaces the destination, so the original host tests missed this difference.
+
+The fix keeps the token and serialized config in memory, flushes a staging file,
+uses an old-config backup when replacement is unsupported, restores on failure,
+and recovers valid staged/backup files on the next launch. A retries failed saves
+without requesting a new token.
+
+Clean Switch build and all **six** host suites passed after the fix. New tests
+wrap Linux rename to reproduce Switch semantics and cover:
+
+- Server-only config followed by saving the approved device token.
+- Failed final rename restoring the previous config.
+- Interrupted replacement recovering the staged config.
+- Corrupt staged config recovering the backup.
+- Failed install plus rollback preserving recovery files.
+- Standard POSIX replacement remaining supported.
+
+Alpha.2 artifact: **10,357,447 bytes**.
+
+SHA-256: `4d1f70b713d3ba8c1cd5694f23265268ffd1b059bbd668755388908066291709`.
+
+NRO structure validation passed. This persistence fix has not yet been retested
+on physical hardware. The following sections retain the original alpha.1 build
+and test record; their older size/checksum refer to that release.
+
 ## Switch build
 
 Cleaned output, then ran `./switch/scripts/build.sh -j2` successfully with the
