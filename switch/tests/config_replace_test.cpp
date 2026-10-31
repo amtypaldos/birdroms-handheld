@@ -51,11 +51,21 @@ int main() {
   Config initial;
   initial.server_url = "https://example.test";
   initial.rom_base = (root / "roms").string();
+  // First-run URL entry and pending/cancelled pairing cannot create config,
+  // staging files or even the containing directory.
+  const auto fresh = (root / "fresh" / "config.json").string();
+  rejects([&] { save_paired_config(fresh, initial); });
+  assert(!fs::exists(root / "fresh"));
   save_config(primary, initial);
   Config approved = initial;
   approved.device_token = "fixture-only-approved-token";
-  save_config(primary, approved);
+  save_paired_config(primary, approved);
   assert(overwrite_attempts > 0);
+  assert(load_config(primary).device_token == approved.device_token);
+  assert(!fs::exists(primary + ".tmp") && !fs::exists(primary + ".bak"));
+  // Re-pairing after revocation also leaves the stored config untouched until
+  // a replacement token has actually arrived.
+  rejects([&] { save_paired_config(primary, initial); });
   assert(load_config(primary).device_token == approved.device_token);
   assert(!fs::exists(primary + ".tmp") && !fs::exists(primary + ".bak"));
 

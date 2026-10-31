@@ -74,7 +74,9 @@ client has no search UI, so the Switch port does not add one.
 ## Configuration
 
 Path: `sdmc:/switch/birdroms/config.json` (on a computer:
-`/switch/birdroms/config.json`). Created automatically. A minimal first-run file:
+`/switch/birdroms/config.json`). Created automatically only after pairing receives a device token. Entering a
+server URL, waiting for approval, cancelling or failing pairing does not write
+configuration files. A minimal optional first-run file:
 
 ```json
 {
@@ -108,7 +110,8 @@ The newly received token stays in memory while saving, and A retries a failed sa
 The token is a secret. Do not share config.json. It is not printed in logs or
 embedded in the binary. SD FAT/exFAT filesystems do not enforce Unix permissions.
 To pair again, clear `device_token` while the app is closed. A server HTTP 401
-clears the persisted token and starts pairing. Malformed configuration causes
+clears the token in memory and starts pairing; the existing file is replaced
+only after a new token arrives. Malformed configuration causes
 a startup error; repair or back up and remove the file before relaunching.
 
 ## Network and downloads

@@ -2,6 +2,26 @@
 
 Source implementation: commit `0bb1668` on `feature/nintendo-switch`.
 
+## Alpha.3: persist only after receiving the token
+
+Per user requirement, server URL entry and the entire pending pairing flow now
+remain in memory. No configuration save occurs until approval returns a device
+token. Revoked tokens are cleared in memory; the existing config stays unchanged
+until a new token arrives. Failed saves retain the received token for A to retry.
+
+The UI uses a guarded `save_paired_config` entry point at its two remaining save
+locations (approval and save retry). Regression tests verify that saving a
+server-only draft cannot create even the containing directory, and cannot
+change an existing config or create staging/backup files. Alpha.2's recovery and
+Switch rename fixes remain in place for users with an existing config.
+
+All six host suites passed; clean Switch build and NRO layout checks passed.
+Hardware retest is pending.
+
+Alpha.3 artifact: **10,357,447 bytes**.
+
+SHA-256: `bade9d3dc9c667d549c96ca5e475c2a1186afeae739cfb717e08a207a1570f0f`.
+
 ## Alpha.2 pairing persistence fix
 
 Hardware feedback from the first prerelease: initial server config writes

@@ -221,11 +221,6 @@ class App {
       selecting_all = false;
       if (r.status == 401 && cfg.paired()) {
         cfg.device_token.clear();
-        try {
-          save_config(cfgpath, cfg);
-        } catch (...) {
-          message = "Could not save revoked token state";
-        }
         selection.clear();
         pair();
         return;
@@ -276,7 +271,7 @@ class App {
       if (r.poll.status == PollStatus::Approved) {
         cfg.device_token = r.poll.token;
         try {
-          save_config(cfgpath, cfg);
+          save_paired_config(cfgpath, cfg);
           home();
         } catch (const std::exception &e) {
           message = std::string("Token received; save failed: ") + e.what();
@@ -304,10 +299,6 @@ class App {
         generation++;
         cfg.device_token.clear();
         selection.clear();
-        try {
-          save_config(cfgpath, cfg);
-        } catch (...) {
-        }
         pair();
       }
       SDL_Texture *t = nullptr;
@@ -399,12 +390,9 @@ class App {
       return;
     }
     cfg.server_url = url;
-    try {
-      save_config(cfgpath, cfg);
-      pair();
-    } catch (const std::exception &e) {
-      message = e.what();
-    }
+    // Pairing drafts remain in memory. Persist only after approval delivers
+    // a device token; cancellation and failures must leave SD unchanged.
+    pair();
   }
   void press(u64 keys) {
     if (keys & HidNpadButton_Minus) {
@@ -439,7 +427,7 @@ class App {
       if (keys & HidNpadButton_A && !message.empty()) {
         if (cfg.paired()) {
           try {
-            save_config(cfgpath, cfg);
+            save_paired_config(cfgpath, cfg);
             home();
           } catch (const std::exception &e) {
             message = e.what();
@@ -727,10 +715,6 @@ public:
         generation++;
         cfg.device_token.clear();
         selection.clear();
-        try {
-          save_config(cfgpath, cfg);
-        } catch (...) {
-        }
         pair();
       }
       if (keys)

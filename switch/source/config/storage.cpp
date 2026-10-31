@@ -245,6 +245,12 @@ void save_config(const std::string &path, const Config &c) {
   }
   replace_config(temp, path);
 }
+void save_paired_config(const std::string &path, const Config &config) {
+  if (!config.paired())
+    throw std::runtime_error(
+        "Pairing must complete before configuration is saved");
+  save_config(path, config);
+}
 std::string filename(const Rom &r) {
   std::string full = sanitize(r.filename);
   std::string ext, base;
