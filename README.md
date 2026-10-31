@@ -2,6 +2,10 @@
 
 On-device client for [birdROMs](https://github.com/amtypaldos/birdROMs): Go + SDL2 app for muOS (RG40XX-V first).
 
+## Nintendo Switch
+
+A native C++17/libnx/SDL2 port lives in [`switch/`](switch/README.md), with a Docker build, host tests, and `birdroms.nro`. It downloads to RetroArch ROM folders. Physical Switch validation is still required; see the installation guide and testing checklist there. Existing Go builds and releases are unchanged.
+
 ## Build
 
 Cross-compiled from macOS to a **dynamic arm64** binary linked against the device's own SDL2/SDL2_ttf (the device ships them; they need glibc >= 2.38, so the target is `aarch64-linux-gnu.2.38`).

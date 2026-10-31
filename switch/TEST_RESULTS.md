@@ -1,0 +1,65 @@
+# Validation results — 2026-10-31
+
+Source implementation: commit `0bb1668` on `feature/nintendo-switch`.
+
+## Switch build
+
+Cleaned output, then ran `./switch/scripts/build.sh -j2` successfully with the
+pinned official devkitPro image. No compiler warnings or errors in the final log.
+
+- devkitA64 r29.2-1
+- libnx 4.12.0-1
+- SDL2 2.28.5-4, SDL2_image 2.0.4-1, SDL2_ttf 2.22.0-2
+- switch-curl 7.69.1-5 (native libnx SSL, system certificate store)
+- Artifact: `switch/birdroms.nro`, **10,353,351 bytes**
+- SHA-256: `a7b947be7c35ce694d84ca9f7c138dfc99d64d8d573214222dca1a7425ccfcdd`
+- `python3 switch/scripts/validate-nro.py`: valid NRO layout with embedded
+  Homebrew Menu icon, NACP metadata and RomFS assets.
+
+The required minimal SDL2/libnx NRO milestone succeeded before implementation
+and delegation (commit `de528d7`). No hardware execution is implied by compilation.
+
+## Linux host tests
+
+`./switch/scripts/test.sh` succeeded against the final implementation:
+
+1. API JSON, optional fields, pagination, pairing statuses, malformed responses,
+   expiry validation and unsafe token rejection.
+2. Real local HTTP fixture: authentication headers, platform/playlist/listing
+   calls, URL encoding, pairing, cross-origin cover header suppression, redirect
+   rejection, image byte cap, streaming, HTTP failures and cancellation.
+3. Config/storage/download tests: roundtrip/malformed config, platform aliases,
+   filename safety, traversal/symlink rejection, existing files, collision
+   preservation, `.part` retention/restart, short bodies, cancellation, and
+   revoked authentication stopping the queue with the failed item recorded.
+4. UI selection/global deduplication, selecting across appended pages, focus and
+   grid scrolling.
+5. Predecode PNG/JPEG dimensions: valid headers, truncation and oversized images.
+
+Output:
+
+```
+API JSON/pagination/pairing tests passed
+API HTTP/auth/streaming/cancellation tests passed
+Storage tests passed: configuration, mappings, filename/path safety, symlinks, existing detection, queue failures, partial restart, collisions
+All Switch host test suites passed
+```
+
+## Existing Go regression tests
+
+`docker run --rm -v "$PWD:/work:ro" -w /work golang:1.26 go test ./internal/...`
+passed all 11 internal packages: api, boxart, browse, config, download, input,
+muxapp, pair, platforms, update and version. No existing Go source, release
+pipeline or backend source was modified. The Go SDL release build was not rerun.
+
+## Not verified
+
+No physical Switch, live birdROMs server, real SD card, Joy-Con/Pro Controller,
+software keyboard, native TLS connection or suspend/resume operation was tested.
+Host network tests use a deterministic HTTP fixture, not an authenticated live
+server. Native SSL certificate validation remains enabled, with no bypass.
+
+See README.md for manual installation/configuration and the physical testing
+checklist. Known differences include manual updates, unsupported WebP covers,
+configuration-file folder editing, and restarting partial downloads because the
+backend does not implement HTTP Range handling.
