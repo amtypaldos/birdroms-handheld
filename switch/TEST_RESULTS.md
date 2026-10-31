@@ -2,6 +2,24 @@
 
 Source implementation: commit `0bb1668` on `feature/nintendo-switch`.
 
+## Regular Switch release v0.1.0
+
+The user reported the application "fully works now" on physical Nintendo Switch
+hardware after alpha.3. This is user-reported hardware validation, not a claim
+that every device/mode and failure scenario in the manual checklist was tested.
+
+The application code is unchanged from `8d5aa59` (alpha.3); only the packaged
+version metadata changes to 0.1.0. All six host suites passed for that source.
+A fresh clean Switch build passed with no compiler warnings; NRO/icon/NACP/RomFS
+layout validation passed. The manual checklist remains for broader testing.
+
+Stable artifact: **10,357,447 bytes**.
+
+SHA-256: `da1faf6a3186bd8a1f00673380a3099565e2095b0cb760dc4f1acdb339bbd8d8`.
+
+The following alpha sections are historical validation records for earlier
+artifacts. Their pending-hardware notes and checksums refer to those releases.
+
 ## Alpha.3: persist only after receiving the token
 
 Per user requirement, server URL entry and the entire pending pairing flow now

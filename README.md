@@ -4,7 +4,7 @@ On-device client for [birdROMs](https://github.com/amtypaldos/birdROMs): Go + SD
 
 ## Nintendo Switch
 
-A native C++17/libnx/SDL2 port lives in [`switch/`](switch/README.md), with a Docker build, host tests, and `birdroms.nro`. It downloads to RetroArch ROM folders. Physical Switch validation is still required; see the installation guide and testing checklist there. Existing Go builds and releases are unchanged.
+A native C++17/libnx/SDL2 port lives in [`switch/`](switch/README.md), with a Docker build, host tests, and `birdroms.nro`. It downloads to RetroArch ROM folders. Initial user hardware testing passed; see the installation guide and testing checklist there. Existing Go builds and releases are unchanged.
 
 ## Build
 

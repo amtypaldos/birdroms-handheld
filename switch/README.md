@@ -4,9 +4,9 @@ Native C++17/libnx/SDL2 port of the existing Go handheld client, built alongside
 muOS/ROCKNIX. This homebrew downloads your birdROMs library to RetroArch ROM
 folders. It is not an emulator or Switch title installer.
 
-**Build and automated Linux tests are verified. Physical Switch operation has
-not been verified.** Use the checklist below before treating this as a tested
-hardware release.
+**Build and automated Linux tests pass. The user reports the application fully
+working on a physical Switch after the pairing fixes.** The checklist below
+remains available for broader device and failure-case testing.
 
 ## Build
 
@@ -50,8 +50,8 @@ libcurl development headers/libraries and Python 3 installed.
 
 Full-memory Homebrew Menu mode (title override) is recommended for large
 libraries and covers. Album/applet mode has a smaller memory budget and may
-not provide the software keyboard; prefill `server_url` if needed. Neither
-mode has been tested on hardware. The interface renders at 1280×720 in
+not provide the software keyboard; prefill `server_url` if needed. The user has confirmed operation on physical hardware;
+mode-specific limitations and the full checklist still need broader testing. The interface renders at 1280×720 in
 handheld or docked mode. No touchscreen support is implemented.
 
 ## Controls
