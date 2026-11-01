@@ -69,6 +69,7 @@ handheld or docked mode. No touchscreen support is implemented.
 | A | Open platform/playlist; toggle focused ROM; retry after pairing error |
 | B | Back; cancel pairing; cancel active download queue; exit from home |
 | Y | Select all / none in current view, including unloaded API pages |
+| X (home) | Choose the ROM base directory |
 | L / R | Previous / next visible page (8 ROMs in the grid) |
 | Plus | Download global selection |
 | Minus | Exit (cancels active downloads) |
@@ -77,6 +78,26 @@ Bindings follow Go logical controls; Plus corresponds to Start. Selection is
 shared across platforms and playlists and deduplicated by ROM ID. L/R scroll
 within a lazily loaded grid rather than following pagination URLs. The Go
 client has no search UI, so the Switch port does not add one.
+
+## ROM directory picker
+
+Press **X** on home to browse existing SD-card directories. The picker starts at
+your current ROM base, or the nearest existing parent if the default folder has
+not yet been created. D-pad/left stick navigates; A enters a directory; B goes to
+the parent (or returns home at the SD root); Y uses the current directory; X
+cancels. L/R scroll by a visible page. The saved base remains displayed while
+browsing. Directory reads run on a worker, not the SDL rendering thread.
+
+Only Y changes the saved base. Cancelling does not save anything. Pairing must
+have completed before the picker can be used. Existing ROMs stay where they are;
+the new base applies to future downloads and existing-file detection there.
+Each platform retains its configured subfolder beneath that base. For example,
+choosing `sdmc:/ROMs/` sends NES games to `sdmc:/ROMs/nes/` by default. The picker
+selects existing folders; missing platform subfolders are created on download.
+
+These are birdROMs defaults, not a required RetroArch directory layout.
+RetroArch can browse/scan your chosen folder; no RetroArch settings or playlists
+are changed automatically. Per-platform overrides remain in `platform_dirs`.
 
 ## Configuration
 
@@ -105,8 +126,8 @@ Built-in aliases are derived from the Go client's platform CSV, with RetroArch
 folder overrides (`nes`, `snes`, `n64`, `gb`, `gbc`, `gba`, `genesis`, `psx`,
 etc.). Unmapped platforms use `_UNSORTED`. Custom values must be single safe
 folder names; subdirectories, separators and traversal are rejected. The ROM
-base must start `sdmc:/`. Mapping and base directory changes are made by editing
-this file while the application is closed. UI layout is fixed; there are no
+base must start `sdmc:/`. Choose the base directory in-app with **X on the home screen**. Platform mapping
+changes are made by editing this file while the application is closed. UI layout is fixed; there are no
 additional UI settings to persist. Version 1 configuration accepts absent
 optional fields, and saves with a temporary file and sync. On Switch, where rename cannot
 replace an existing file, the app backs up the old config before moving the new
@@ -160,7 +181,7 @@ a startup error; repair or back up and remove the file before relaunching.
 `tests/run.sh` runs API parsing/pairing/pagination tests, local real-HTTP fixture
 tests for authentication/header safety/streaming/failure/cancellation, storage
 and configuration tests (including traversal, symlinks, collisions, short reads
-and `.part` restart), and selection/navigation tests. `validate-nro.py` checks
+and `.part` restart), selection/navigation tests, and SD directory picker safety/navigation tests. `validate-nro.py` checks
 NRO magic and embedded icon, metadata and RomFS asset ranges. These are build
 and host checks, not proof of working hardware, live-server connectivity,
 controller behavior or SD performance.
@@ -180,6 +201,8 @@ are not modified. No NSP/XCI, cores, saves, firmware or sysmodule changes.
 - [ ] Browse platforms and playlists; verify ordering, metadata, missing covers and large libraries.
 - [ ] Joy-Con and Pro Controller: D-pad, analog repeat, A/B/Y/L/R/Plus/Minus.
 - [ ] Select across views; Y includes all pages; navigate back during a request without stale results.
+- [ ] X opens the directory picker; A/B navigate; X cancels without saving; Y persists a new base across restart.
+- [ ] Changing the ROM base preserves pairing/platform mappings and routes future downloads to the new base.
 - [ ] Download small and multi-gigabyte ROMs; UI stays responsive, names/extensions preserved.
 - [ ] Verify ROMs open in RetroArch using the configured paths.
 - [ ] Verify existing-file skip, filename collisions and custom/unknown platform mappings.

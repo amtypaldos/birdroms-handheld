@@ -2,6 +2,30 @@
 
 Source implementation: commit `0bb1668` on `feature/nintendo-switch`.
 
+## v2026.11.01.1: ROM directory picker
+
+X on the paired home screen opens a controller-operated SD directory browser.
+Listings run on a background worker; A opens folders, B navigates up, Y saves the
+current folder, X cancels, and L/R page. The picker begins at the configured base
+or its nearest existing parent. Platform mappings and the device token persist
+unchanged; only the base directory changes. Existing ROMs are not moved.
+
+All **seven** host suites passed, including new tests for directory filtering,
+parent/child navigation, missing-path fallback, sdmc root handling, traversal,
+root-boundary and symlink rejection, and empty folders. Storage integration tests
+verify that saving a selected base preserves authentication and platform maps.
+The other six suites passed again against the integrated source.
+
+Clean Switch build passed without compiler warnings. NRO/icon/NACP/RomFS checks
+passed; embedded NACP version verified as `2026.11.01.1`.
+
+Artifact: **10,386,119 bytes**.
+
+SHA-256: `2eed1465cd9419d05efb8d287241430405d7dbbeba025b666070c5908a1ba926`.
+
+The new directory picker has not been tested on physical Switch hardware.
+Earlier application behavior has the user-reported hardware validation below.
+
 ## Unified date version v2026.11.01
 
 Switch packaging now follows the same vYYYY.MM.DD[.N] release convention as the

@@ -1,5 +1,6 @@
 #include "ui/app.hpp"
 #include "api/client.hpp"
+#include "config/folders.hpp"
 #include "config/storage.hpp"
 #include "downloads/manager.hpp"
 #include "ui/image_bounds.hpp"
@@ -45,7 +46,11 @@ struct Result {
   int status = 0;
 };
 enum class Job { None, Home, Open, More, All, PairStart, PairPoll };
-enum class Screen { Setup, Pair, Home, Grid, Download };
+enum class Screen { Setup, Pair, Home, Grid, Download, Directory };
+struct FolderResult {
+  FolderPage page;
+  std::string error;
+};
 struct CoverResult {
   std::vector<unsigned char> data;
   int status = 0;
@@ -86,6 +91,135 @@ class App {
   std::string qrfor;
   std::vector<uint8_t> qr;
   bool qrvalid = false;
+  static constexpr const char *sdroot = "sdmc:/";
+  FolderPage folder_page;
+  int folder_focus = 0, folder_top = 0;
+  std::future<FolderResult> folder_future;
+  std::string folder_request;
+  bool folder_initial = false;
+  unsigned folder_generation = 0, folder_job_generation = 0;
+  bool folder_busy() const {
+    return folder_future.valid() || !folder_request.empty();
+  }
+  void request_folder(const std::string &path, bool initial = false) {
+    ++folder_generation;
+    folder_request = path;
+    folder_initial = initial;
+    message.clear();
+  }
+  void collect_folders() {
+    if (folder_future.valid() && folder_future.wait_for(std::chrono::seconds(
+                                     0)) == std::future_status::ready) {
+      auto result = folder_future.get();
+      if (screen == Screen::Directory &&
+          folder_job_generation == folder_generation) {
+        if (!result.error.empty())
+          message = result.error;
+        else {
+          folder_page = std::move(result.page);
+          folder_focus = folder_top = 0;
+        }
+      }
+    }
+    if (screen == Screen::Directory && !folder_future.valid() &&
+        !folder_request.empty()) {
+      auto path = std::move(folder_request);
+      folder_request.clear();
+      bool initial = folder_initial;
+      folder_job_generation = folder_generation;
+      folder_future = std::async(std::launch::async, [path, initial]() {
+        FolderResult result;
+        try {
+          result.page =
+              list_folders(sdroot, initial ? folder_start(sdroot, path) : path);
+        } catch (const std::exception &) {
+          result.error =
+              "Cannot read this SD directory. B goes back; X cancels.";
+        }
+        return result;
+      });
+    }
+  }
+  void close_folders() {
+    ++folder_generation;
+    folder_request.clear();
+    screen = Screen::Home;
+    message.clear();
+  }
+  void press_folders(u64 keys) {
+    if (keys & HidNpadButton_X) {
+      close_folders();
+      return;
+    }
+    if (keys & HidNpadButton_B) {
+      if (folder_busy() || folder_page.path.empty() ||
+          folder_page.path == sdroot)
+        close_folders();
+      else
+        request_folder(folder_parent(sdroot, folder_page.path));
+      return;
+    }
+    if (folder_busy())
+      return;
+    const int count = folder_page.directories.size();
+    if (keys & HidNpadButton_Up)
+      folder_focus = move_focus(folder_focus, -1, count);
+    if (keys & HidNpadButton_Down)
+      folder_focus = move_focus(folder_focus, 1, count);
+    if (keys & HidNpadButton_L)
+      folder_focus = move_focus(folder_focus, -8, count);
+    if (keys & HidNpadButton_R)
+      folder_focus = move_focus(folder_focus, 8, count);
+    if (folder_focus < folder_top)
+      folder_top = folder_focus;
+    if (folder_focus >= folder_top + 8)
+      folder_top = folder_focus - 7;
+    if (keys & HidNpadButton_A && count) {
+      request_folder(folder_child(sdroot, folder_page.path,
+                                  folder_page.directories[folder_focus]));
+      return;
+    }
+    if (keys & HidNpadButton_Y && !folder_page.path.empty()) {
+      auto updated = cfg;
+      updated.rom_base = folder_page.path;
+      try {
+        save_paired_config(cfgpath, updated);
+        cfg = std::move(updated);
+        close_folders();
+        message = "ROM directory saved: " + cfg.rom_base;
+      } catch (const std::exception &e) {
+        message = std::string("Could not save ROM directory: ") + e.what();
+      }
+    }
+  }
+  void draw_folders() {
+    text("ROM DIRECTORY", 40, 20, neon, big);
+    text("Saved: " + cfg.rom_base, 40, 80, dim, small, 1190);
+    text(folder_page.path.empty() ? "Loading SD card..." : folder_page.path, 40,
+         125, pink, normal, 1190);
+    int end = std::min<int>(folder_page.directories.size(), folder_top + 8);
+    for (int i = folder_top; i < end; ++i) {
+      int y = 185 + (i - folder_top) * 43;
+      if (i == folder_focus) {
+        fill(panel, {35, y - 2, 1210, 40});
+        fill(neon, {35, y - 2, 5, 40});
+      }
+      text(folder_page.directories[i] + "/", 60, y,
+           i == folder_focus ? neon : dim, normal, 1160);
+    }
+    if (folder_page.directories.empty() && !folder_busy())
+      text("No subdirectories. Y chooses this folder.", 60, 220);
+    text("System folders (nes/, snes/, gba/, psx/...) are added beneath your "
+         "choice.",
+         40, 550, dim, small);
+    text("Applies to future downloads. Existing ROMs stay in their current "
+         "folders.",
+         40, 580, dim, small);
+    if (folder_busy())
+      text("Reading SD card...", 40, 635, neon, small);
+    text("A open    Y use this folder    B parent/back    X cancel    L/R page",
+         40, 675, dim, small);
+  }
   void fill(SDL_Color c, SDL_Rect r) {
     SDL_SetRenderDrawColor(renderer, c.r, c.g, c.b, 255);
     SDL_RenderFillRect(renderer, &r);
@@ -399,6 +533,10 @@ class App {
       quit = true;
       return;
     }
+    if (screen == Screen::Directory) {
+      press_folders(keys);
+      return;
+    }
     if (keys & HidNpadButton_B) {
       if (screen == Screen::Download) {
         auto d = downloads.snapshot();
@@ -448,6 +586,13 @@ class App {
       return;
     }
     if (screen == Screen::Home) {
+      if (keys & HidNpadButton_X && (job == Job::None || job == Job::Home)) {
+        screen = Screen::Directory;
+        folder_page = {};
+        folder_focus = folder_top = 0;
+        request_folder(cfg.rom_base, true);
+        return;
+      }
       int n = platforms.size() + playlists.size();
       if (keys & HidNpadButton_Up)
         homefocus = move_focus(homefocus, -1, n);
@@ -565,8 +710,9 @@ class App {
       text(job == Job::Home ? "Loading library..."
                             : "No platforms or playlists. A refreshes.",
            60, 210);
-    text("A open    B exit    L/R page    + download selected", 40, 665, dim,
-         small);
+    text("A open    X ROM directory    B exit    L/R page    + download "
+         "selected",
+         40, 665, dim, small);
   }
   void draw_grid() {
     text(title, 40, 20, neon, big, 800);
@@ -639,6 +785,8 @@ public:
       future.wait();
     if (coverfuture.valid())
       coverfuture.wait();
+    if (folder_future.valid())
+      folder_future.wait();
     for (auto &c : covers)
       SDL_DestroyTexture(c.second.texture);
     if (big)
@@ -710,6 +858,7 @@ public:
         repeatAt = now + 110;
       }
       collect();
+      collect_folders();
       if (screen == Screen::Download && downloads.snapshot().finished &&
           downloads.snapshot().unauthorized) {
         generation++;
@@ -739,6 +888,8 @@ public:
         draw_grid();
       else if (screen == Screen::Download)
         draw_download();
+      else if (screen == Screen::Directory)
+        draw_folders();
       else if (screen == Screen::Setup) {
         text("birdROMs", 50, 35, neon, big);
         text("Configure your birdROMs server", 50, 180, neon, big);
@@ -752,7 +903,8 @@ public:
           draw_pair();
         text("B cancel    A retry after an error", 40, 665, dim, small);
       }
-      if (job != Job::None && screen != Screen::Pair)
+      if (job != Job::None && screen != Screen::Pair &&
+          screen != Screen::Directory)
         text(job == Job::All ? "Selecting entire view..." : "Loading...", 950,
              610, neon, small);
       if (!message.empty())

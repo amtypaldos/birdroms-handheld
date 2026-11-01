@@ -63,6 +63,15 @@ int main() {
          loaded.rom_base == c.rom_base &&
          loaded.platform_dirs == c.platform_dirs);
   assert(!fs::exists(config + ".tmp"));
+  Config selected = c;
+  selected.rom_base = (root / "selected-roms").string() + "/";
+  save_paired_config(config, selected);
+  auto changed = load_config(config);
+  assert(changed.rom_base == selected.rom_base);
+  assert(changed.device_token == c.device_token &&
+         changed.platform_dirs == c.platform_dirs);
+  save_paired_config(config, c);
+
   assert(!load_config((root / "absent").string()).paired());
   {
     std::ofstream f(config);

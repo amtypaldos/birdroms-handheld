@@ -40,7 +40,7 @@ include $(DEVKITPRO)/libnx/switch_rules
 TARGET		:=	birdroms
 APP_TITLE := birdROMs
 APP_AUTHOR := birdROMs contributors
-APP_VERSION := 2026.11.01
+APP_VERSION := 2026.11.01.1
 BUILD		:=	build
 SOURCES		:=	source source/api source/ui source/config source/downloads source/platform
 DATA		:=	data
