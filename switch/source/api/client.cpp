@@ -8,6 +8,10 @@
 #include <limits>
 #include <memory>
 
+#ifndef BIRDROMS_VERSION
+#define BIRDROMS_VERSION "dev"
+#endif
+
 namespace bird {
 namespace {
 using Json = nlohmann::json;
@@ -68,7 +72,7 @@ Handle setup(const std::string &url) {
   curl_easy_setopt(h.get(), CURLOPT_CAINFO, static_cast<const char *>(nullptr));
   curl_easy_setopt(h.get(), CURLOPT_CAPATH, static_cast<const char *>(nullptr));
 #endif
-  curl_easy_setopt(h.get(), CURLOPT_USERAGENT, "birdROMs-Switch/0.1");
+  curl_easy_setopt(h.get(), CURLOPT_USERAGENT, "birdROMs-Switch/" BIRDROMS_VERSION);
   return h;
 }
 struct Headers {

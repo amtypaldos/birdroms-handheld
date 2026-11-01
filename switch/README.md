@@ -8,6 +8,13 @@ folders. It is not an emulator or Switch title installer.
 working on a physical Switch after the pairing fixes.** The checklist below
 remains available for broader device and failure-case testing.
 
+## Versioning
+
+Releases follow the repository convention: `vYYYY.MM.DD`, with `.1`, `.2`, etc.
+for additional releases on the same date. The Switch NACP version and HTTP user
+agent use the same version without the leading `v`. `v2026.11.01` replaces the
+initial Switch-only `switch-v0.1.0` naming; older tags remain available.
+
 ## Build
 
 From the repository root on Linux with Docker access:

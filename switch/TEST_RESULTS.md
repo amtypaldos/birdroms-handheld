@@ -1,6 +1,22 @@
-# Validation results — 2026-10-31
+# Validation results — updated 2026-11-01
 
 Source implementation: commit `0bb1668` on `feature/nintendo-switch`.
+
+## Unified date version v2026.11.01
+
+Switch packaging now follows the same vYYYY.MM.DD[.N] release convention as the
+Go client. The NACP version is verified as `2026.11.01`, and the HTTP user-agent
+uses the same build version. Application behavior is unchanged from v0.1.0.
+
+A clean Switch rebuild and NRO layout checks passed without compiler warnings.
+The six passing host suites and user hardware report remain applicable to the
+unchanged application behavior; they were not rerun solely for the version label.
+
+Artifact: **10,357,447 bytes**.
+
+SHA-256: `95743ad12417326e6478a0ad0721c452028a94da7119a39d6a94c2abb40798a9`.
+
+Earlier sections below retain their historical versions/checksums.
 
 ## Regular Switch release v0.1.0
 
