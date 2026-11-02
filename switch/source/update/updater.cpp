@@ -410,12 +410,16 @@ void apply_staged_update(const std::string &target) {
   regular(sidecar);
   regular(target, false);
   regular(backup, false);
-  File in(sidecar, "rb");
-  std::array<char, 65537> buf{};
-  auto n = fread(buf.data(), 1, buf.size(), in.p);
-  if (n == buf.size() || ferror(in.p))
-    fail("Invalid staged update manifest");
-  auto info = manifest_info(parse_archive_json(std::string(buf.data(), n)));
+  UpdateInfo info;
+  {
+    File in(sidecar, "rb");
+    std::array<char, 65537> buf{};
+    auto n = fread(buf.data(), 1, buf.size(), in.p);
+    if (n == buf.size() || ferror(in.p))
+      fail("Invalid staged update manifest");
+    info = manifest_info(parse_archive_json(std::string(buf.data(), n)));
+  } // Switch cannot delete the sidecar while its read handle is open.
+
   verify_file(stage, info);
   if (!exists(target)) {
     if (!exists(backup))
@@ -538,6 +542,9 @@ void Updater::start() {
       std::remove(zip.c_str());
       std::lock_guard<std::mutex> lock(mutex_);
       state_.running = false;
+      // A failed automatic attempt stays stopped until an explicit metadata
+      // check.
+      state_.available = false;
       state_.cancelled = cancel_.load();
       state_.message = cancel_ ? "Update cancelled" : e.what();
     }

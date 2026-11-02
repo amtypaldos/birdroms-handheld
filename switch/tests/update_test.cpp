@@ -2,9 +2,11 @@
 #include "update/parsing.hpp"
 #include "update/picosha2.h"
 #include "update/updater.hpp"
+#include <array>
 #include <cassert>
 #include <cerrno>
 #include <chrono>
+#include <dirent.h>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -14,6 +16,7 @@ using namespace bird;
 namespace fs = std::filesystem;
 std::string root, fail_target;
 bool slow = false;
+std::string download_mode = "valid.zip";
 std::string read(const std::string &p) {
   std::ifstream f(p, std::ios::binary);
   return std::string(std::istreambuf_iterator<char>(f), {});
@@ -28,6 +31,33 @@ extern "C" int __wrap_rename(const char *from, const char *to) {
   }
   return __real_rename(from, to);
 }
+extern "C" int __real_remove(const char *);
+extern "C" int __wrap_remove(const char *path) {
+  // Model Switch SD semantics: deleting an open file fails. Inspect real file
+  // descriptors so this exercises the production resource lifetime.
+  const std::string value(path);
+  if (value.size() >= 12 && value.substr(value.size() - 12) == ".update.json") {
+    DIR *directory = opendir("/proc/self/fd");
+    assert(directory);
+    bool open = false;
+    while (auto *entry = readdir(directory)) {
+      std::array<char, 4096> destination{};
+      auto descriptor = std::string("/proc/self/fd/") + entry->d_name;
+      auto length =
+          readlink(descriptor.c_str(), destination.data(), destination.size());
+      if (length > 0 && std::string(destination.data(), length) == value) {
+        open = true;
+        break;
+      }
+    }
+    closedir(directory);
+    if (open) {
+      errno = EBUSY;
+      return -1;
+    }
+  }
+  return __real_remove(path);
+}
 namespace bird {
 UpdateInfo Client::handheld_info(std::atomic_bool *cancel) {
   if (slow)
@@ -40,7 +70,12 @@ UpdateInfo Client::handheld_info(std::atomic_bool *cancel) {
 void Client::download_handheld(
     FILE *out, std::atomic_bool &cancel,
     const std::function<void(int64_t, int64_t)> &cb) {
-  auto data = read(root + "/valid.zip");
+  if (download_mode == "http404")
+    throw HttpError(404, "Update download returned HTTP 404");
+  if (download_mode == "cancel")
+    while (!cancel.load())
+      std::this_thread::sleep_for(std::chrono::milliseconds(5));
+  auto data = read(root + "/" + download_mode);
   if (cancel)
     throw std::runtime_error("cancelled");
   assert(fwrite(data.data(), 1, data.size(), out) == data.size());
@@ -134,6 +169,7 @@ int main(int argc, char **argv) {
   assert(read(target) != old);
   assert(read(update_backup_path(target)) == old);
   assert(!fs::exists(target + ".update"));
+  assert(!fs::exists(target + ".update.json"));
   assert(read(root + "/config.json") == config &&
          read(root + "/Game.nes") == rom);
   // Config remains writable after installation; token and user settings
@@ -178,6 +214,45 @@ int main(int argc, char **argv) {
   await(u);
   assert(u.snapshot().ready);
   assert(read(root + "/config.json") == config + "\n");
+  // A failed automatic download must retain its readable error and stop
+  // offering downloads until an explicit check; the installed executable/config
+  // stay intact.
+  fs::remove(target + ".update");
+  fs::remove(target + ".update.json");
+  const auto installed = read(target),
+             saved_config = read(root + "/config.json");
+  for (const std::string mode : {"http404", "invalid-nro.zip", "cancel"}) {
+    download_mode = mode;
+    Updater failed(c, target, "2026.11.01.1");
+    failed.check();
+    await(failed);
+    assert(failed.snapshot().available);
+    failed.start();
+    if (mode == "cancel")
+      failed.cancel();
+    await(failed);
+    auto error = failed.snapshot();
+    assert(!error.running && !error.ready && !error.available);
+    assert(!error.message.empty());
+    assert(read(target) == installed &&
+           read(root + "/config.json") == saved_config);
+    failed.start();
+    assert(!failed.snapshot().running &&
+           failed.snapshot().message == error.message);
+    assert(!fs::exists(target + ".update") &&
+           !fs::exists(target + ".update.zip.part"));
+    download_mode = "valid.zip";
+    failed.check();
+    await(failed);
+    assert(failed.snapshot().available);
+    failed.start();
+    await(failed);
+    assert(failed.snapshot().ready);
+    assert(read(target) == installed &&
+           read(root + "/config.json") == saved_config);
+    fs::remove(target + ".update");
+    fs::remove(target + ".update.json");
+  }
   slow = true;
   Updater cancelled(c, target, "2026.11.01.1");
   cancelled.check();
