@@ -1,6 +1,6 @@
-# Validation results — updated 2026-11-01
+# Validation results — updated 2026-11-02
 
-Source implementation: commit `0bb1668` on `feature/nintendo-switch`.
+Current release: `v2026.11.02`, implementation commit `716895a` on `feature/nintendo-switch`.
 
 ## v2026.11.02: self-hosted Switch updates
 
@@ -23,6 +23,14 @@ PostgreSQL; frontend **161 tests passed**, lint/build passed; Playwright checked
 1440px desktop and 390px mobile layouts, platform downloads, pairing and errors
 using API fixtures. Screenshots are local QA artifacts. The pre-existing PWA
 registerSW.js omission was reproduced against baseline and remains unchanged.
+
+Published-image verification also passed with real login and downloads (no API
+stubs), desktop/mobile layouts with no overflow or JavaScript exceptions, and a
+device-authenticated native updater installing over the prior released NRO.
+Runtime config remained byte-for-byte unchanged during installation and could
+be saved afterward. Production backend/web are healthy on `2026.11.02`; the
+personalized archive contains only the HTTPS server seed, with no token or
+runtime config. The default Go package endpoint remains available.
 
 NRO: **10,508,999 bytes**, SHA-256 `8ed09cf402b7a407e1c5403b1cf6a445dba5a6672615251069708595b53a1bff`.
 ZIP: **4,517,626 bytes**, SHA-256 `ef3a2d148887e0e8711af7c0364746a33fdef61d6c98c3e60da772a0f7d18828`.
