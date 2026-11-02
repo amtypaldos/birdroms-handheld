@@ -9,3 +9,8 @@
 - devkitPro official example Makefile adapted for this build. Runtime libraries
   (libnx, SDL2, SDL2_image, SDL2_ttf, curl and their dependencies) come from the
   official devkitPro image pinned in Dockerfile, rather than vendored source.
+
+- PicoSHA2: include/update/picosha2.h, MIT license embedded in the header;
+  https://github.com/okdshin/PicoSHA2. Used for streaming update verification.
+- minizip: official devkitPro switch-minizip static library, linked with zlib
+  for bounded ZIP reading. Host tests use Debian libminizip-dev/zlib1g-dev.

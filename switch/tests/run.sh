@@ -13,4 +13,11 @@ c++ -std=c++17 -Wall -Wextra -Iinclude tests/ui_image_bounds_test.cpp -o tests/b
 tests/build/ui_image_bounds_test
 c++ -std=c++17 -Wall -Wextra -Iinclude tests/folders_test.cpp source/config/folders.cpp -o tests/build/folders_test
 tests/build/folders_test
+c++ -std=c++17 -Wall -Wextra -Iinclude tests/seed_config_test.cpp source/config/storage.cpp -o tests/build/seed_config_test
+tests/build/seed_config_test
+c++ -std=c++17 -Wall -Wextra -Iinclude tests/update_policy_test.cpp -o tests/build/update_policy_test
+tests/build/update_policy_test
+sh tests/update_tests.sh
+sh tests/update_http_tests.sh
+python3 tests/package_test.py
 echo "All Switch host test suites passed"

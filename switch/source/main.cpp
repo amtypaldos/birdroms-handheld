@@ -1,16 +1,17 @@
 #include "config/storage.hpp"
 #include "ui/app.hpp"
+#include "update/updater.hpp"
 #include <cstdio>
 #include <curl/curl.h>
 #include <exception>
+#include <filesystem>
 #include <switch.h>
 
 namespace {
-void startup_error() {
+void notice(const char *message) {
   consoleInit(nullptr);
-  // Do not expose configuration contents or exception messages here.
-  printf("birdROMs could not start.\nCheck config.json, SD card and available "
-         "memory.\nPress + to exit.\n");
+  // Controlled messages only: never expose config contents or network bodies.
+  printf("%s\nPress + to exit.\n", message);
   PadState pad;
   padConfigureInput(1, HidNpadStyleSet_NpadStandard);
   padInitializeDefault(&pad);
@@ -24,7 +25,9 @@ void startup_error() {
 }
 } // namespace
 
-int main(int, char **) {
+int main(int argc, char **argv) {
+  const std::string executable =
+      bird::update_executable_path(argc > 0 && argv && argv[0] ? argv[0] : "");
   const bool romfs = R_SUCCEEDED(romfsInit());
   const bool sockets = R_SUCCEEDED(socketInitializeDefault());
   const bool ssl = sockets && R_SUCCEEDED(sslInitialize(4));
@@ -33,13 +36,26 @@ int main(int, char **) {
   if (romfs && curl) {
     try {
       const std::string path = "sdmc:/switch/birdroms/config.json";
-      result = bird::run_ui(bird::load_config(path), path);
+      const std::string seed =
+          executable.empty()
+              ? "sdmc:/switch/birdroms/server.json"
+              : (std::filesystem::path(executable).parent_path() /
+                 "server.json")
+                    .string();
+      result =
+          bird::run_ui(bird::with_seed_server(bird::load_config(path), seed),
+                       path, executable);
     } catch (const std::exception &) {
       result = 1;
     }
   }
-  if (result)
-    startup_error();
+  const bool install = result == bird::UpdateReadyExit;
+  if (result && !install)
+    notice("birdROMs could not start. Check config.json, SD card and available "
+           "memory.");
+  // The running NRO's RomFS may hold the executable open. No replacement before
+  // UI/fonts/workers, curl, services and RomFS have all released their
+  // resources.
   if (curl)
     curl_global_cleanup();
   if (ssl)
@@ -48,5 +64,21 @@ int main(int, char **) {
     socketExit();
   if (romfs)
     romfsExit();
+  if (install) {
+    try {
+      bird::apply_staged_update(executable);
+      if (envHasNextLoad()) {
+        const auto arguments = "\"" + executable + "\"";
+        if (R_SUCCEEDED(envSetNextLoad(executable.c_str(), arguments.c_str())))
+          return 0;
+      }
+      notice("Update installed. Open birdROMs again from Homebrew Menu.");
+      return 0;
+    } catch (const std::exception &) {
+      notice("Update could not be installed. Reopen birdROMs or its "
+             ".previous.nro backup.");
+      return 1;
+    }
+  }
   return result;
 }

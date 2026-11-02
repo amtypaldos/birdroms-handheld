@@ -47,5 +47,7 @@ Switch uses 1280x720, SD paths and native libnx controller input. Settings are
 stored at sdmc:/switch/birdroms/config.json. Firmware, RetroArch configuration,
 emulator cores and native Switch title installation are outside scope.
 Go handheld self-update packages target muOS/ROCKNIX and cannot update a Switch
-NRO; install new NRO versions manually. muOS gamelist refresh and box-art writes
+NRO. The server now adds a separate `?platform=switch` package/metadata contract,
+while default URLs retain the Go package. Switch packages carry an NRO/version
+manifest and token-free server seed; runtime config is preserved across updates. muOS gamelist refresh and box-art writes
 are OS-specific and are not applicable to RetroArch v1 (no playlist changes).

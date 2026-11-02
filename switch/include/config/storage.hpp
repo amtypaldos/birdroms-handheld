@@ -2,6 +2,7 @@
 #include "types.hpp"
 namespace bird {
 Config load_config(const std::string &);
+Config with_seed_server(Config, const std::string &seed_path);
 void save_config(const std::string &, const Config &);
 // UI persistence boundary: refuse any write before pairing completes.
 void save_paired_config(const std::string &, const Config &);

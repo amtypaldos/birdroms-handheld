@@ -22,25 +22,26 @@ From the repository root on Linux with Docker access:
 ```sh
 ./switch/scripts/build.sh -j2
 python3 switch/scripts/validate-nro.py
+python3 switch/scripts/package.py
 ./switch/scripts/test.sh
 ```
 
-Output: `switch/birdroms.nro`. The Dockerfile pins the official devkitPro
+Outputs: `switch/birdroms.nro` and `switch/birdROMs-switch.zip`, each with a SHA-256 file. The ZIP contains the NRO and its version/hash manifest; the self-hosted server adds its token-free server seed. The Dockerfile pins the official devkitPro
 `devkita64` image by digest, including devkitA64, libnx, SDL2, SDL2_image,
-SDL2_ttf, curl, zlib, image codecs and font libraries. No host compiler or
+SDL2_ttf, curl, minizip, zlib, image codecs and font libraries. No host compiler or
 privileged host package installation is required. Docker must be accessible to
 your user. The first pull is large. Tests use a separate Debian container with
 native GCC, curl development files and Python; no Switch hardware is needed.
 
 With an existing devkitPro install, install the official `switch-dev`,
-`switch-sdl2`, `switch-sdl2_image`, `switch-sdl2_ttf`, and `switch-curl` packages,
+`switch-sdl2`, `switch-sdl2_image`, `switch-sdl2_ttf`, `switch-minizip`, and `switch-curl` packages,
 set `DEVKITPRO`/`DEVKITA64`, then `make -C switch -j2`. Use the pinned container
 for the dependency versions used for this artifact. The Makefile uses
 `pkg-config` for static SDL dependencies and libnx's `switch_rules`.
 
 For a clean build: `./switch/scripts/build.sh clean`, followed by the normal
 build command. Host tests directly: `cd switch && sh tests/run.sh` with GCC,
-libcurl development headers/libraries and Python 3 installed.
+libcurl/minizip/zlib development headers/libraries and Python 3 installed.
 
 ## Install and pair
 
@@ -61,6 +62,47 @@ not provide the software keyboard; prefill `server_url` if needed. The user has 
 mode-specific limitations and the full checklist still need broader testing. The interface renders at 1280×720 in
 handheld or docked mode. No touchscreen support is implemented.
 
+## Self-hosted installation and automatic updates
+
+The server's Handheld page now offers a Nintendo Switch ZIP. Extract it to the
+SD-card root, keeping `switch/birdroms/` intact. It contains `birdroms.nro`,
+`version.json` and a `server.json` naming that server. There is no device token
+or runtime `config.json` in the archive. The app reads the server seed into
+memory on first launch and writes config only after receiving a pairing token.
+An existing server URL/config takes precedence over a new seed.
+
+After pairing, the app checks its paired server in the background on launch.
+A newer date-versioned Switch package downloads and is verified before the app
+exits to install it. It restarts when the loader supports that; otherwise reopen
+it from Homebrew Menu. **B** cancels/skips updates for the current launch;
+**ZL on home** checks again. Failed updates stop with a readable error until an
+explicit retry, and offline/unavailable servers do not prevent browsing.
+
+Updating preserves `sdmc:/switch/birdroms/config.json`, the token, ROM base,
+platform mappings and ROM files. The JSON remains writable using the existing
+backup/recovery save path. The downloaded package's settings never overwrite it.
+Only the verified NRO is staged for installation. The manifest's NRO size/hash
+is checked against authenticated server metadata; the whole personalized ZIP
+hash is deliberately not compared to the unpersonalized published ZIP hash.
+
+Updates require launching the actual `.nro` from SD. The app does not guess an
+installation target for unsupported/netloader launches. It closes SDL/font and
+ROMFS handles before replacing its executable, preserves a launchable
+`*.previous.nro` backup, and restores the old file if replacement fails. If you
+launch that backup for recovery, B can skip updating for the current session.
+Filesystem/power-loss and automatic restart behavior still need hardware testing.
+
+**One manual upgrade is required to install this updater-enabled build.** Later
+updates come from your server, never GitHub. The server must include the new
+Switch-package endpoint; old servers continue serving Go handheld packages.
+
+Server owners publish with `python manage.py publish_handheld PACKAGE --platform
+switch`. Metadata/download use `/api/handheld/?platform=switch` and
+`/api/handheld/download/?platform=switch`; default URLs remain the Go package.
+Container builds pin both `handheld-version` and `switch-version`, bundle both
+archives, and install them into the media volume at startup. GitHub release CI
+now builds the NRO/ZIP as well as the existing Go archive.
+
 ## Controls
 
 | Input | Action |
@@ -70,6 +112,7 @@ handheld or docked mode. No touchscreen support is implemented.
 | B | Back; cancel pairing; cancel active download queue; exit from home |
 | Y | Select all / none in current view, including unloaded API pages |
 | X (home) | Choose the ROM base directory |
+| ZL (home) | Check/retry app updates from the paired server |
 | L / R | Previous / next visible page (8 ROMs in the grid) |
 | Plus | Download global selection |
 | Minus | Exit (cancels active downloads) |
@@ -186,9 +229,9 @@ NRO magic and embedded icon, metadata and RomFS asset ranges. These are build
 and host checks, not proof of working hardware, live-server connectivity,
 controller behavior or SD performance.
 
-Switch updates use manual NRO replacement. Go's muOS/ROCKNIX self-update archive,
-muOS catalogue box-art installation and game-list refresh are platform-specific
-and are not ported. Cover art is shown in-app; RetroArch playlists/configuration
+Switch automatic updates use a Switch-specific ZIP from the same server. The
+Go muOS/ROCKNIX archive format, muOS catalogue box-art installation and game-list
+refresh remain platform-specific. Cover art is shown in-app; RetroArch playlists/configuration
 are not modified. No NSP/XCI, cores, saves, firmware or sysmodule changes.
 
 ## Physical Switch checklist
@@ -208,6 +251,10 @@ are not modified. No NSP/XCI, cores, saves, firmware or sysmodule changes.
 - [ ] Verify existing-file skip, filename collisions and custom/unknown platform mappings.
 - [ ] Cancel, disconnect Wi-Fi and relaunch; no incomplete final files, retry restarts partials.
 - [ ] Full/removed/write-protected SD errors preserve completed files and report failures.
+- [ ] ZL checks the paired server; a newer Switch build downloads, verifies, installs and restarts/reopens.
+- [ ] B skips an update; failure retains a readable error until explicit retry; offline checks do not block browsing.
+- [ ] Existing writable config/token/ROM paths survive an update and can still be edited afterward.
+- [ ] Launch `.previous.nro` for recovery and skip updating with B.
 - [ ] Suspend/resume, dock/undock and exit during network/download operations; no hangs/leaks.
 
 Third-party notices: [THIRD_PARTY.md](THIRD_PARTY.md).

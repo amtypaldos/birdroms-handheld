@@ -2,6 +2,37 @@
 
 Source implementation: commit `0bb1668` on `feature/nintendo-switch`.
 
+## v2026.11.02: self-hosted Switch updates
+
+Clean Switch build and NRO/icon/NACP/RomFS checks passed. The updater stages a
+verified NRO beside the actual executable and installs only after SDL/fonts,
+worker threads, networking and RomFS have closed. User token/config/ROM paths
+are preserved. Failed updates require explicit retry rather than looping.
+
+Verification includes numeric date-version comparison, authenticated real HTTP
+fixtures, 64 MiB caps, cancellation, ZIP/path/duplicate/compression defenses,
+NRO/SHA/manifest checks, backup/rollback, simulated open-file deletion, seed-only
+first run, update UI cancellation policy, and writable config after install.
+The release-packager CLI has four tests for layout/hash/version consistency,
+determinism, oversize rejection and malformed metadata. The live native binary
+was also packaged by the real Django publisher/personalizer and accepted by the
+native host updater; its existing config stayed unchanged and remained writable.
+
+Cross-project evidence: full Django suite **615 tests passed** against isolated
+PostgreSQL; frontend **161 tests passed**, lint/build passed; Playwright checked
+1440px desktop and 390px mobile layouts, platform downloads, pairing and errors
+using API fixtures. Screenshots are local QA artifacts. The pre-existing PWA
+registerSW.js omission was reproduced against baseline and remains unchanged.
+
+NRO: **10,508,999 bytes**, SHA-256 `8ed09cf402b7a407e1c5403b1cf6a445dba5a6672615251069708595b53a1bff`.
+ZIP: **4,517,626 bytes**, SHA-256 `ef3a2d148887e0e8711af7c0364746a33fdef61d6c98c3e60da772a0f7d18828`.
+
+Independent backend, frontend and native updater reviews completed; identified
+contract, retry and resource-lifetime issues were fixed and re-reviewed.
+Physical Switch update/restart/power-loss behavior has not been tested. One
+manual upgrade installs this updater-enabled build; future updates come from
+the paired server. Existing hardware validation below covers earlier features.
+
 ## v2026.11.01.1: ROM directory picker
 
 X on the paired home screen opens a controller-operated SD directory browser.

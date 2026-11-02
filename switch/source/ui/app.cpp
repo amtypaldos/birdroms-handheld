@@ -5,6 +5,7 @@
 #include "downloads/manager.hpp"
 #include "ui/image_bounds.hpp"
 #include "ui/state.hpp"
+#include "ui/update_policy.hpp"
 #include <SDL.h>
 #include <SDL_image.h>
 #include <SDL_ttf.h>
@@ -18,6 +19,10 @@ extern "C" {
 #include <memory>
 #include <set>
 #include <sstream>
+#ifndef BIRDROMS_VERSION
+#define BIRDROMS_VERSION "dev"
+#endif
+
 namespace bird {
 namespace {
 using Clock = std::chrono::steady_clock;
@@ -46,7 +51,7 @@ struct Result {
   int status = 0;
 };
 enum class Job { None, Home, Open, More, All, PairStart, PairPoll };
-enum class Screen { Setup, Pair, Home, Grid, Download, Directory };
+enum class Screen { Setup, Pair, Home, Grid, Download, Directory, Update };
 struct FolderResult {
   FolderPage page;
   std::string error;
@@ -61,7 +66,89 @@ struct Cover {
 };
 class App {
   Config cfg;
-  std::string cfgpath;
+  std::string cfgpath, executable;
+  std::unique_ptr<Updater> updater;
+  std::string updater_token;
+  UpdatePolicy update_policy;
+  bool update_checked = false, update_install = false;
+  void ensure_updater() {
+    if (!cfg.paired())
+      return;
+    if (updater && updater_token == cfg.device_token)
+      return;
+    if (updater && updater->snapshot().running)
+      return;
+    updater = std::make_unique<Updater>(cfg, executable, BIRDROMS_VERSION);
+    updater_token = cfg.device_token;
+    update_checked = false;
+    update_policy = UpdatePolicy{};
+  }
+  void show_updates() {
+    ensure_updater();
+    if (!updater)
+      return;
+    update_policy.retry();
+    screen = Screen::Update;
+    message.clear();
+    if (!updater->snapshot().running) {
+      updater->check();
+      update_checked = true;
+    }
+  }
+  void collect_updates() {
+    if (!cfg.paired()) {
+      if (updater)
+        updater->cancel();
+      return;
+    }
+    const bool may_update = screen == Screen::Home || screen == Screen::Update;
+    if (may_update)
+      ensure_updater();
+    if (!updater || updater_token != cfg.device_token)
+      return;
+    if (!update_checked && may_update) {
+      updater->check();
+      update_checked = true;
+    }
+    const auto state = updater->snapshot();
+    const auto action = update_policy.next(state, may_update);
+    if (action == UpdateAction::Download) {
+      screen = Screen::Update;
+      message.clear();
+      updater->start();
+    } else if (action == UpdateAction::Install) {
+      update_install = true;
+      quit = true;
+    }
+  }
+  void draw_update() {
+    auto state = updater ? updater->snapshot() : UpdateState{};
+    text("APP UPDATE", 40, 25, neon, big);
+    text("Installed: " BIRDROMS_VERSION, 40, 110, dim);
+    if (!state.info.version.empty())
+      text("Server version: " + state.info.version, 40, 155, pink);
+    text("Updates come from your paired birdROMs server.", 40, 215, dim,
+         normal);
+    double ratio =
+        state.total ? std::clamp(double(state.written) / state.total, 0.0, 1.0)
+                    : 0;
+    fill(panel, {40, 295, 1200, 38});
+    fill(neon, {40, 295, int(1200 * ratio), 38});
+    if (state.written)
+      text(std::to_string(int(ratio * 100)) + "%   " + bytes(state.written) +
+               "   " + bytes(state.speed) + "/s",
+           40, 365);
+    text(state.message.empty() ? "Checking for a Switch package..."
+                               : state.message,
+         40, 440, neon, small);
+    text("Pairing, ROM location and platform settings are kept.", 40, 510, dim,
+         small);
+    text("The app restarts after the update is verified and installed.", 40,
+         550, dim, small);
+    text(state.running ? "B cancel and continue browsing"
+                       : "A check again    B back",
+         40, 665, dim, small);
+  }
   SDL_Window *window = nullptr;
   SDL_Renderer *renderer = nullptr;
   TTF_Font *normal = nullptr, *small = nullptr, *big = nullptr;
@@ -530,7 +617,24 @@ class App {
   }
   void press(u64 keys) {
     if (keys & HidNpadButton_Minus) {
+      if (screen == Screen::Update) {
+        update_policy.skip();
+        if (updater)
+          updater->cancel();
+      }
       quit = true;
+      return;
+    }
+    if (screen == Screen::Update) {
+      if (keys & HidNpadButton_B) {
+        update_policy.skip();
+        if (updater)
+          updater->cancel();
+        screen = Screen::Home;
+        message = "App update skipped for this launch";
+      } else if (keys & HidNpadButton_A && updater &&
+                 !updater->snapshot().running)
+        show_updates();
       return;
     }
     if (screen == Screen::Directory) {
@@ -586,6 +690,10 @@ class App {
       return;
     }
     if (screen == Screen::Home) {
+      if (keys & HidNpadButton_ZL) {
+        show_updates();
+        return;
+      }
       if (keys & HidNpadButton_X && (job == Job::None || job == Job::Home)) {
         screen = Screen::Directory;
         folder_page = {};
@@ -710,8 +818,7 @@ class App {
       text(job == Job::Home ? "Loading library..."
                             : "No platforms or playlists. A refreshes.",
            60, 210);
-    text("A open    X ROM directory    B exit    L/R page    + download "
-         "selected",
+    text("A open    X ROM directory    ZL updates    B exit    + download",
          40, 665, dim, small);
   }
   void draw_grid() {
@@ -777,9 +884,12 @@ class App {
   }
 
 public:
-  App(Config c, std::string path)
-      : cfg(std::move(c)), cfgpath(std::move(path)) {}
+  App(Config c, std::string path, std::string executable_path)
+      : cfg(std::move(c)), cfgpath(std::move(path)),
+        executable(std::move(executable_path)) {}
   ~App() {
+    if (updater)
+      updater->cancel();
     downloads.cancel();
     if (future.valid())
       future.wait();
@@ -880,6 +990,7 @@ public:
         request_pair();
       }
       cover_update();
+      collect_updates();
       SDL_SetRenderDrawColor(renderer, bg.r, bg.g, bg.b, 255);
       SDL_RenderClear(renderer);
       if (screen == Screen::Home)
@@ -890,6 +1001,8 @@ public:
         draw_download();
       else if (screen == Screen::Directory)
         draw_folders();
+      else if (screen == Screen::Update)
+        draw_update();
       else if (screen == Screen::Setup) {
         text("birdROMs", 50, 35, neon, big);
         text("Configure your birdROMs server", 50, 180, neon, big);
@@ -904,7 +1017,7 @@ public:
         text("B cancel    A retry after an error", 40, 665, dim, small);
       }
       if (job != Job::None && screen != Screen::Pair &&
-          screen != Screen::Directory)
+          screen != Screen::Directory && screen != Screen::Update)
         text(job == Job::All ? "Selecting entire view..." : "Loading...", 950,
              610, neon, small);
       if (!message.empty())
@@ -912,11 +1025,12 @@ public:
       SDL_RenderPresent(renderer);
       SDL_Delay(16);
     }
-    return 0;
+    return update_install ? UpdateReadyExit : 0;
   }
 };
 } // namespace
-int run_ui(Config cfg, const std::string &path) {
-  return App(std::move(cfg), path).run();
+int run_ui(Config cfg, const std::string &path,
+           const std::string &executable_path) {
+  return App(std::move(cfg), path, executable_path).run();
 }
 } // namespace bird

@@ -245,6 +245,46 @@ void save_config(const std::string &path, const Config &c) {
   }
   replace_config(temp, path);
 }
+Config with_seed_server(Config config, const std::string &seed_path) {
+  if (!config.server_url.empty())
+    return config;
+  std::ifstream input(seed_path, std::ios::binary);
+  if (!input)
+    return config;
+  std::string raw(16385, '\0');
+  input.read(raw.data(), raw.size());
+  const auto count = input.gcount();
+  if (count <= 0 || count > 16384 || input.bad())
+    return config;
+  raw.resize(static_cast<size_t>(count));
+  try {
+    const auto seed = nlohmann::json::parse(raw);
+    if (!seed.is_object() || seed.size() != 1 || !seed.contains("server_url") ||
+        !seed["server_url"].is_string())
+      return config;
+    auto url = seed["server_url"].get<std::string>();
+    const size_t scheme = url.rfind("https://", 0) == 0  ? 8
+                          : url.rfind("http://", 0) == 0 ? 7
+                                                         : 0;
+    if (!scheme)
+      return config;
+    for (unsigned char c : url)
+      if (c <= 32 || c == 127)
+        return config;
+    const auto authority_end = url.find_first_of("/?#", scheme);
+    const auto authority = url.substr(scheme, authority_end == std::string::npos
+                                                  ? std::string::npos
+                                                  : authority_end - scheme);
+    if (authority.empty() || authority.find('@') != std::string::npos)
+      return config;
+    while (!url.empty() && url.back() == '/')
+      url.pop_back();
+    config.server_url = std::move(url);
+  } catch (const nlohmann::json::exception &) {
+  }
+  return config;
+}
+
 void save_paired_config(const std::string &path, const Config &config) {
   if (!config.paired())
     throw std::runtime_error(

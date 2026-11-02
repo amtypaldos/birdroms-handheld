@@ -40,9 +40,9 @@ include $(DEVKITPRO)/libnx/switch_rules
 TARGET		:=	birdroms
 APP_TITLE := birdROMs
 APP_AUTHOR := birdROMs contributors
-APP_VERSION := 2026.11.01.1
+APP_VERSION := 2026.11.02
 BUILD		:=	build
-SOURCES		:=	source source/api source/ui source/config source/downloads source/platform
+SOURCES		:=	source source/api source/ui source/config source/downloads source/platform source/update
 DATA		:=	data
 INCLUDES	:=	include include/platform
 ROMFS := assets
@@ -63,7 +63,7 @@ CXXFLAGS	:= $(CFLAGS) -std=gnu++17
 ASFLAGS	:=	-g $(ARCH)
 LDFLAGS	=	-specs=$(DEVKITPRO)/libnx/switch.specs -g $(ARCH) -Wl,-Map,$(notdir $*.map)
 
-LIBS := $(shell PKG_CONFIG_PATH=$(PORTLIBS)/lib/pkgconfig pkg-config --static --libs SDL2_image SDL2_ttf) -lcurl -lz -lnx
+LIBS := $(shell PKG_CONFIG_PATH=$(PORTLIBS)/lib/pkgconfig pkg-config --static --libs SDL2_image SDL2_ttf) -lminizip -lcurl -lz -lnx
 
 #---------------------------------------------------------------------------------
 # list of directories containing libraries, this must be the top level containing
