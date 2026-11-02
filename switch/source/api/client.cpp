@@ -1,5 +1,6 @@
 #include "api/client.hpp"
 #include "api/parsing.hpp"
+#include "update/parsing.hpp"
 #include <algorithm>
 #include <cctype>
 #include <cerrno>
@@ -72,7 +73,8 @@ Handle setup(const std::string &url) {
   curl_easy_setopt(h.get(), CURLOPT_CAINFO, static_cast<const char *>(nullptr));
   curl_easy_setopt(h.get(), CURLOPT_CAPATH, static_cast<const char *>(nullptr));
 #endif
-  curl_easy_setopt(h.get(), CURLOPT_USERAGENT, "birdROMs-Switch/" BIRDROMS_VERSION);
+  curl_easy_setopt(h.get(), CURLOPT_USERAGENT,
+                   "birdROMs-Switch/" BIRDROMS_VERSION);
   return h;
 }
 struct Headers {
@@ -122,12 +124,22 @@ struct Reply {
   std::vector<unsigned char> body;
 };
 Reply request(const Config &c, const std::string &url, bool authenticated,
-              bool post = false, size_t cap = max_json) {
+              bool post = false, size_t cap = max_json,
+              std::atomic_bool *cancel = nullptr) {
   auto h = setup(url);
   Headers headers;
   auth(headers, c, authenticated);
   curl_easy_setopt(h.get(), CURLOPT_HTTPHEADER, headers.p);
   curl_easy_setopt(h.get(), CURLOPT_TIMEOUT, 45L);
+  if (cancel) {
+    curl_easy_setopt(h.get(), CURLOPT_NOPROGRESS, 0L);
+    curl_easy_setopt(
+        h.get(), CURLOPT_XFERINFOFUNCTION,
+        +[](void *p, curl_off_t, curl_off_t, curl_off_t, curl_off_t) -> int {
+          return static_cast<std::atomic_bool *>(p)->load() ? 1 : 0;
+        });
+    curl_easy_setopt(h.get(), CURLOPT_XFERINFODATA, cancel);
+  }
   if (post) {
     curl_easy_setopt(h.get(), CURLOPT_POST, 1L);
     curl_easy_setopt(h.get(), CURLOPT_POSTFIELDS, "");
@@ -183,6 +195,8 @@ struct Stream {
   std::atomic_bool *cancel;
   const std::function<void(int64_t, int64_t)> *progress;
   bool write_failed = false, callback_failed = false;
+  int64_t limit = 0, written = 0;
+  bool overflow = false;
 };
 size_t streamed(char *data, size_t size, size_t n, void *p) noexcept {
   auto &s = *static_cast<Stream *>(p);
@@ -197,7 +211,13 @@ size_t streamed(char *data, size_t size, size_t n, void *p) noexcept {
     s.write_failed = true;
     return 0;
   }
-  size_t count = size * n, written = fwrite(data, 1, count, s.file);
+  size_t count = size * n;
+  if (s.limit && count > static_cast<uint64_t>(s.limit - s.written)) {
+    s.overflow = true;
+    return 0;
+  }
+  size_t written = fwrite(data, 1, count, s.file);
+  s.written += written;
   if (written != count)
     s.write_failed = true;
   return written;
@@ -297,18 +317,21 @@ std::vector<unsigned char> Client::cover(const std::string &url) {
   success(r.status);
   return std::move(r.body);
 }
-void Client::download(int id, FILE *file, std::atomic_bool &cancel,
-                      const std::function<void(int64_t, int64_t)> &callback) {
-  if (id <= 0 || !file)
+namespace {
+void stream_download(const Config &config, const std::string &path, FILE *file,
+                     std::atomic_bool &cancel,
+                     const std::function<void(int64_t, int64_t)> &callback,
+                     int64_t limit = 0) {
+  if (!file)
     throw std::runtime_error("Invalid download destination");
   if (cancel.load())
     throw std::runtime_error("Download cancelled");
-  auto h =
-      setup(base(config_) + "/api/roms/" + std::to_string(id) + "/download/");
+  auto h = setup(base(config) + path);
   Headers headers;
-  auth(headers, config_, true);
+  auth(headers, config, true);
   curl_easy_setopt(h.get(), CURLOPT_HTTPHEADER, headers.p);
   Stream s{h.get(), file, &cancel, &callback};
+  s.limit = limit;
   curl_easy_setopt(h.get(), CURLOPT_WRITEFUNCTION, streamed);
   curl_easy_setopt(h.get(), CURLOPT_WRITEDATA, &s);
   curl_easy_setopt(h.get(), CURLOPT_NOPROGRESS, 0L);
@@ -319,6 +342,8 @@ void Client::download(int id, FILE *file, std::atomic_bool &cancel,
   curl_easy_getinfo(h.get(), CURLINFO_RESPONSE_CODE, &status);
   if (cancel.load())
     throw std::runtime_error("Download cancelled");
+  if (s.overflow)
+    throw std::runtime_error("Update archive exceeds 64 MiB limit");
   if (s.write_failed || ferror(file))
     throw std::runtime_error("SD write failed (check free space and card)");
   if (s.callback_failed)
@@ -331,5 +356,25 @@ void Client::download(int id, FILE *file, std::atomic_bool &cancel,
   if (result != CURLE_OK)
     throw HttpError(0, std::string("Download failed: ") +
                            curl_easy_strerror(result));
+}
+} // namespace
+void Client::download(int id, FILE *file, std::atomic_bool &cancel,
+                      const std::function<void(int64_t, int64_t)> &callback) {
+  if (id <= 0)
+    throw std::runtime_error("Invalid ROM identifier");
+  stream_download(config_, "/api/roms/" + std::to_string(id) + "/download/",
+                  file, cancel, callback);
+}
+UpdateInfo Client::handheld_info(std::atomic_bool *cancel) {
+  auto r = request(config_, base(config_) + "/api/handheld/?platform=switch",
+                   true, false, 65536, cancel);
+  success(r.status);
+  return parse_update_info(std::string(r.body.begin(), r.body.end()));
+}
+void Client::download_handheld(
+    FILE *file, std::atomic_bool &cancel,
+    const std::function<void(int64_t, int64_t)> &callback) {
+  stream_download(config_, "/api/handheld/download/?platform=switch", file,
+                  cancel, callback, 64LL * 1024 * 1024);
 }
 } // namespace bird
