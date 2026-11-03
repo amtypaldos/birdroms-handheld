@@ -54,7 +54,7 @@ Implementation evidence: [Linux foundation](../../platforms/linux-foundation.md)
 ## Tracker
 
 - [x] Inspect source and document design/rollout on main.
-- [ ] Foundation merged; existing muOS behavior verified.
+- [x] Foundation merged; existing muOS behavior verified (PR #15).
 - [ ] ROCKNIX package/build complete.
 - [ ] ROCKNIX server/page integration complete.
 - [ ] ROCKNIX hardware acceptance recorded and release published.
@@ -98,7 +98,7 @@ so the new constructor never unconditionally appends `Roms`.
   muOS catalogue paths. Keep in-app cover display unchanged.
 - [x] Run `go test ./internal/...`, `go test ./...` with SDL dependencies, and
   the existing muOS build/package/glibc checks. Inspect the package layout.
-- [ ] Merge the reviewed foundation PR after CI passes. Update this tracker.
+- [x] Reviewed foundation merged in [PR #15](https://github.com/amtypaldos/birdroms-handheld/pull/15) after both CI test/build runs passed.
 
 ## Task 2 — ROCKNIX build, mapping and launcher
 

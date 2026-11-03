@@ -47,7 +47,7 @@ can run every firmware, or that a successful build establishes hardware support.
 
 | Work | Branch | Initial status |
 | --- | --- | --- |
-| Linux profile/build foundation | `feature/linux-platform-profiles` | Planned |
+| Linux profile/build foundation | `feature/linux-platform-profiles` | Merged: PR #15; automated muOS regression/build checks passed |
 | muOS regression gate | foundation + every platform branch | Existing implementation; revalidate |
 | ROCKNIX AArch64 | `feature/rocknix` | Planned; first new target |
 | Batocera AArch64 | `feature/batocera` | Planned; distinct launcher/package |
