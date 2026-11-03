@@ -188,6 +188,9 @@ func TestPartAlreadyFullLengthRestartsFromZero(t *testing.T) {
 func TestHostilePlatformAndTitleStayUnderUnsorted(t *testing.T) {
 	root := t.TempDir()
 	mount := filepath.Join(root, "card")
+	if err := os.Mkdir(mount, 0755); err != nil {
+		t.Fatal(err)
+	}
 	rom := api.ROM{ID: 9, Title: "../x", Platform: "../../etc", Extension: ".bin"}
 	q := New(&fakeFetcher{fn: body("evil")}, mount, []api.ROM{rom})
 	q.Run(context.Background())

@@ -49,6 +49,8 @@ Main currently documents muOS RG40XX-V first; the Switch work remains on
 - Backend distribution changes belong in the birdROMs backend repository, not
   a copied backend inside this repository. Coordinate matching feature branches.
 
+Implementation evidence: [Linux foundation](../../platforms/linux-foundation.md).
+
 ## Tracker
 
 - [x] Inspect source and document design/rollout on main.
@@ -82,21 +84,21 @@ Add `download.NewWithProfile(f Fetcher, profile firmware.Profile, roms []api.ROM
 keep `New` as a muOS-compatible wrapper. ROMRoot is already the ROM directory,
 so the new constructor never unconditionally appends `Roms`.
 
-- [ ] Add table tests showing muOS NES still lands under `<mount>/Roms/FC`,
+- [x] Add table tests showing muOS NES still lands under `<mount>/Roms/FC`,
   a synthetic lowercase profile lands under `<root>/nes`, alternate-library
   detection uses the same mapping, and unknown names use `_UNSORTED`.
-- [ ] Test profile rejection of unknown target, empty root, traversal/absolute
+- [x] Test profile rejection of unknown target, empty root, traversal/absolute
   mappings and missing/unmounted storage. An absent mount must not be silently
   created; test unwritable storage as a non-root user.
-- [ ] Run the targeted tests before implementation and confirm new cases fail.
-- [ ] Implement the profile boundary and queue compatibility wrapper. Select
+- [x] Run the targeted tests before implementation and confirm new cases fail.
+- [x] Implement the profile boundary and queue compatibility wrapper. Select
   the firmware via `BIRDROMS_FIRMWARE`; unset preserves muOS. Non-muOS launchers
   supply `BIRDROMS_ROM_ROOT`; retain existing muOS mount variables unchanged.
-- [ ] Gate external art by profile; test that non-muOS downloads never access
+- [x] Gate external art by profile; test that non-muOS downloads never access
   muOS catalogue paths. Keep in-app cover display unchanged.
-- [ ] Run `go test ./internal/...`, `go test ./...` with SDL dependencies, and
+- [x] Run `go test ./internal/...`, `go test ./...` with SDL dependencies, and
   the existing muOS build/package/glibc checks. Inspect the package layout.
-- [ ] Commit, review and merge foundation independently. Update this tracker.
+- [ ] Merge the reviewed foundation PR after CI passes. Update this tracker.
 
 ## Task 2 — ROCKNIX build, mapping and launcher
 

@@ -8,11 +8,12 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/amtypaldos/birdroms-handheld/internal/api"
-	"github.com/amtypaldos/birdroms-handheld/internal/platforms"
+	"github.com/amtypaldos/birdroms-handheld/internal/firmware"
 )
 
 // Fetcher downloads a ROM into w starting at offset. *api.Client implements it.
@@ -46,7 +47,7 @@ func (s Status) String() string {
 	}
 }
 
-// Item is one queued ROM. Dir is the muOS folder name under Roms; Known is
+// Item is one queued ROM. Dir is a mapped system directory; Known is
 // false when the platform had no folder and the ROM goes to the visible
 // fallback folder (platforms.Unsorted).
 type Item struct {
@@ -63,7 +64,7 @@ type Item struct {
 	Err      string
 }
 
-// Queue downloads its items one at a time into <romMount>/Roms/<dir>.
+// Queue downloads its items one at a time into the profile ROM root and system directory.
 type Queue struct {
 	// Refresh is called with the system directory after each ROM is renamed
 	// into place. The default is a no-op; muOS game-list refresh is not
@@ -80,9 +81,13 @@ type Queue struct {
 	// ArtWait bounds how long Run waits for pending Art calls (default 10s).
 	ArtWait time.Duration
 
-	art   sync.WaitGroup
-	f     Fetcher
-	mount string
+	art         sync.WaitGroup
+	f           Fetcher
+	profile     firmware.Profile
+	legacy      bool
+	initErr     error
+	storagePath string
+	storageInfo os.FileInfo
 	// libs are other ROM storages (e.g. the SD card when downloads go to the
 	// internal one). They are only read, to spot a ROM that is already there.
 	libs []string
@@ -96,14 +101,37 @@ type Queue struct {
 // BIRDROMS_ROM_MOUNT); with an empty mount every item fails without
 // downloading anything.
 func New(f Fetcher, romMount string, roms []api.ROM) *Queue {
-	q := &Queue{
-		Refresh: func(string) error { return nil },
-		f:       f,
-		mount:   romMount,
-		items:   make([]Item, len(roms)),
+	p := firmware.MuOSProfile(romMount)
+	q := NewWithProfile(f, p, roms)
+	q.legacy = true
+	if romMount == "" {
+		q.initErr = fmt.Errorf("BIRDROMS_ROM_MOUNT is not set")
 	}
+	return q
+}
+
+// NewWithProfile uses complete ROM roots. It snapshots the profile so caller
+// changes cannot redirect an existing queue. Invalid profiles fail before fetch.
+func NewWithProfile(f Fetcher, profile firmware.Profile, roms []api.ROM) *Queue {
+	p := profile
+	p.LibraryRoots = append([]string(nil), profile.LibraryRoots...)
+	p.SystemDirs = make(map[string]string, len(profile.SystemDirs))
+	for key, dir := range profile.SystemDirs {
+		p.SystemDirs[key] = dir
+	}
+	q := &Queue{Refresh: func(string) error { return nil }, f: f, profile: p, items: make([]Item, len(roms))}
+	q.initErr = p.Validate()
+	if q.initErr == nil {
+		q.storagePath = p.ROMRoot
+		q.storageInfo, q.initErr = os.Stat(q.storagePath)
+		if os.IsNotExist(q.initErr) && p.Target == firmware.MuOS && filepath.Base(p.ROMRoot) == "Roms" {
+			q.storagePath = filepath.Dir(p.ROMRoot)
+			q.storageInfo, q.initErr = os.Stat(q.storagePath)
+		}
+	}
+	q.libs = append([]string(nil), p.LibraryRoots...)
 	for i, r := range roms {
-		dir, known := platforms.Folder(r.Platform)
+		dir, known := p.Folder(r.Platform)
 		q.items[i] = Item{ROM: r, Dir: dir, Known: known}
 		if r.SizeBytes != nil {
 			q.items[i].Total = *r.SizeBytes
@@ -112,13 +140,19 @@ func New(f Fetcher, romMount string, roms []api.ROM) *Queue {
 	return q
 }
 
-// SetLibraries tells the queue about other ROM storages to check for a ROM
-// that is already there. Empty entries and the download target are ignored.
+// SetLibraries retains card-mount semantics for legacy New queues; profile
+// queues take complete ROM roots. Call only before Run.
 func (q *Queue) SetLibraries(roots ...string) {
 	q.libs = q.libs[:0]
-	for _, r := range roots {
-		if r != "" && r != q.mount {
-			q.libs = append(q.libs, r)
+	for _, root := range roots {
+		if root == "" {
+			continue
+		}
+		if q.legacy {
+			root = filepath.Join(root, "Roms")
+		}
+		if root != q.profile.ROMRoot && filepath.IsAbs(root) {
+			q.libs = append(q.libs, root)
 		}
 	}
 }
@@ -197,23 +231,56 @@ func (q *Queue) fail(i int, msg string) {
 
 func (q *Queue) runOne(ctx context.Context, i int) {
 	it := q.Snapshot()[i]
-	if q.mount == "" {
-		q.fail(i, "BIRDROMS_ROM_MOUNT is not set")
+	if q.initErr != nil {
+		q.fail(i, q.initErr.Error())
 		return
 	}
-	// it.Dir is always a name from the folder map (or the fallback), never
-	// the raw platform string.
-	dir := filepath.Join(q.mount, "Roms", it.Dir)
+	current, err := os.Stat(q.storagePath)
+	if err != nil || !os.SameFile(q.storageInfo, current) {
+		q.fail(i, "ROM storage changed or was removed; reopen the download queue")
+		return
+	}
+	if err := q.checkROMRoot(); err != nil {
+		q.fail(i, err.Error())
+		return
+	}
+	if err := q.profile.Validate(); err != nil {
+		q.fail(i, err.Error())
+		return
+	}
+	// Reject symlinked system paths before creation or existing-file checks.
+	dir, err := systemPath(q.profile.ROMRoot, it.Dir)
+	if err != nil {
+		q.fail(i, err.Error())
+		return
+	}
 	// Another storage may already hold it (muOS merges them in its game list).
 	// Checked before anything is created so a skip leaves no empty folders.
 	for _, lib := range q.libs {
-		if name, ok := findExisting(filepath.Join(lib, "Roms", it.Dir), it.ROM); ok {
+		libDir, err := systemPath(lib, it.Dir)
+		if err != nil {
+			continue
+		}
+		if name, ok := findExisting(libDir, it.ROM); ok {
 			size := *it.ROM.SizeBytes
 			q.update(i, func(it *Item) { it.Status, it.Skipped, it.Existing, it.Written = Done, true, name, size })
 			return
 		}
 	}
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	storage, err := q.openStorage()
+	if err != nil {
+		q.fail(i, err.Error())
+		return
+	}
+	relative, err := filepath.Rel(q.storagePath, dir)
+	if err == nil {
+		err = storage.MkdirAll(relative, 0o755)
+	}
+	closeErr := storage.Close()
+	if err == nil {
+		err = closeErr
+	}
+	if err != nil {
 		q.fail(i, err.Error())
 		return
 	}
@@ -238,7 +305,7 @@ func (q *Queue) runOne(ctx context.Context, i int) {
 	}
 
 	q.update(i, func(it *Item) { it.Status = Active })
-	err := q.fetchToPart(ctx, i, final)
+	err = q.fetchToPart(ctx, i, final)
 	switch {
 	case err == nil:
 		q.update(i, func(it *Item) { it.Status = Done })
@@ -257,8 +324,30 @@ func (q *Queue) runOne(ctx context.Context, i int) {
 // size), syncs it and renames it to final. On error the final name is not
 // created and the .part is left in place.
 func (q *Queue) fetchToPart(ctx context.Context, i int, final string) error {
-	part := final + ".part"
-	f, err := os.OpenFile(part, os.O_RDWR|os.O_CREATE, 0o644)
+	storage, err := q.openStorage()
+	if err != nil {
+		return err
+	}
+	defer storage.Close()
+	relative, err := filepath.Rel(q.storagePath, filepath.Dir(final))
+	if err != nil {
+		return err
+	}
+	root, err := storage.OpenRoot(relative)
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+	name := filepath.Base(final)
+	part := name + ".part"
+	if st, err := root.Lstat(part); err == nil {
+		if !st.Mode().IsRegular() {
+			return fmt.Errorf("partial download is not a regular file")
+		}
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	f, err := root.OpenFile(part, os.O_RDWR|os.O_CREATE, 0o644)
 	if err != nil {
 		return err
 	}
@@ -269,7 +358,7 @@ func (q *Queue) fetchToPart(ctx context.Context, i int, final string) error {
 	if err != nil {
 		return err
 	}
-	return os.Rename(part, final)
+	return root.Rename(part, name)
 }
 
 // fill downloads into the open part file f, continuing from its current size,
@@ -346,3 +435,63 @@ func (c *ctxFile) Write(p []byte) (int, error) {
 
 func (c *ctxFile) Seek(off int64, whence int) (int64, error) { return c.f.Seek(off, whence) }
 func (c *ctxFile) Truncate(size int64) error                 { return c.f.Truncate(size) }
+
+// systemPath permits a launcher-selected root (which may itself be a mount
+// alias) but rejects symlinks below it, including intermediate system folders.
+func systemPath(root, folder string) (string, error) {
+	path := root
+	for _, part := range strings.Split(folder, string(filepath.Separator)) {
+		path = filepath.Join(path, part)
+		st, err := os.Lstat(path)
+		if os.IsNotExist(err) {
+			continue
+		}
+		if err != nil {
+			return "", err
+		}
+		if st.Mode()&os.ModeSymlink != 0 {
+			return "", fmt.Errorf("system path is a symlink")
+		}
+		if !st.IsDir() {
+			return "", fmt.Errorf("system path is not a directory")
+		}
+	}
+	return path, nil
+}
+
+// openStorage pins writes to the selected directory even if a mount or symlink
+// is replaced between preflight and opening it. Root operations reject escapes.
+func (q *Queue) openStorage() (*os.Root, error) {
+	if err := q.checkROMRoot(); err != nil {
+		return nil, err
+	}
+	root, err := os.OpenRoot(q.storagePath)
+	if err != nil {
+		return nil, err
+	}
+	st, err := root.Stat(".")
+	if err != nil || !os.SameFile(q.storageInfo, st) {
+		root.Close()
+		return nil, fmt.Errorf("ROM storage changed or was removed")
+	}
+	return root, nil
+}
+
+// If muOS Roms was absent at queue creation, the parent is our initial storage
+// anchor. Do not allow a subsequently introduced symlink to redirect that root.
+func (q *Queue) checkROMRoot() error {
+	if q.storagePath == q.profile.ROMRoot {
+		return nil
+	}
+	st, err := os.Lstat(q.profile.ROMRoot)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if st.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("ROM root became a symlink; reopen with verified storage")
+	}
+	return nil
+}

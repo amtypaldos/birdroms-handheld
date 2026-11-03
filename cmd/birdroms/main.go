@@ -20,6 +20,7 @@ import (
 	"github.com/amtypaldos/birdroms-handheld/internal/browse"
 	"github.com/amtypaldos/birdroms-handheld/internal/config"
 	"github.com/amtypaldos/birdroms-handheld/internal/download"
+	"github.com/amtypaldos/birdroms-handheld/internal/firmware"
 	"github.com/amtypaldos/birdroms-handheld/internal/pair"
 	"github.com/amtypaldos/birdroms-handheld/internal/update"
 	"github.com/amtypaldos/birdroms-handheld/internal/version"
@@ -46,6 +47,18 @@ func main() {
 
 func run() error {
 	log.Printf("%s starting", version.String())
+	target := firmware.Target(os.Getenv("BIRDROMS_FIRMWARE"))
+	profile, err := firmware.Resolve(target, os.Getenv)
+	if err != nil {
+		if target != "" && target != firmware.MuOS {
+			return err
+		}
+		// Retain browsing/pairing when the ROM card is unavailable. Queues report
+		// the storage error and never create a missing card mount.
+		log.Printf("ROM storage unavailable: %v", err)
+		profile = firmware.MuOSProfile(os.Getenv("BIRDROMS_ROM_MOUNT"), filepath.SplitList(os.Getenv("BIRDROMS_ROM_MOUNTS"))...)
+	}
+
 	if err := sdl.Init(sdl.INIT_VIDEO | sdl.INIT_GAMECONTROLLER | sdl.INIT_JOYSTICK); err != nil {
 		return fmt.Errorf("sdl init: %w", err)
 	}
@@ -123,35 +136,31 @@ func run() error {
 		// Downloads use their own client (same server and token) with no
 		// overall timeout; browse keeps the 10s one above. muOS's launch
 		// script exports the ROM card mount; nothing is hardcoded here.
-		romMount := os.Getenv("BIRDROMS_ROM_MOUNT")
-		if romMount == "" {
-			log.Printf("BIRDROMS_ROM_MOUNT is not set; downloads will fail")
-		}
 		dlClient := api.New(cfg.ServerURL, cfg.DeviceToken, download.HTTPClient())
-		if selfUpdate(r, downloadui.Fonts{Mid: mid, Small: small, Tiny: tiny}, client, dlClient) {
+		if profile.Target == firmware.MuOS && selfUpdate(r, downloadui.Fonts{Mid: mid, Small: small, Tiny: tiny}, client, dlClient) {
 			return nil // staged: exit 0 so mux_launch.sh swaps the binary and restarts
 		}
 		dl := func(roms []api.ROM) bool {
-			q := download.New(dlClient, romMount, roms)
-			// Every storage the launcher found, for the already-there check.
-			q.SetLibraries(filepath.SplitList(os.Getenv("BIRDROMS_ROM_MOUNTS"))...)
+			q := download.NewWithProfile(dlClient, profile, roms)
 			// Box art for muOS's game list. Uses the browse client (10s
 			// timeout) so a slow cover cannot hang the process.
-			art := boxart.Default(append(filepath.SplitList(os.Getenv("BIRDROMS_ROM_MOUNTS")), romMount), os.Getenv, client.GetCover)
-			q.Art = func(rom api.ROM, dir, file string) error {
-				if rom.CoverURL == nil {
+			if profile.UsesMuOSArt() {
+				art := boxart.Default(append(filepath.SplitList(os.Getenv("BIRDROMS_ROM_MOUNTS")), os.Getenv("BIRDROMS_ROM_MOUNT")), os.Getenv, client.GetCover)
+				q.Art = func(rom api.ROM, dir, file string) error {
+					if rom.CoverURL == nil {
+						return nil
+					}
+					res, err := art.Save(dir, file, *rom.CoverURL)
+					switch {
+					case err != nil:
+						return err
+					case res.Path != "":
+						log.Printf("box art: wrote %s", res.Path)
+					default:
+						log.Printf("box art: skipped %s/%s: %s", dir, file, res.Skip)
+					}
 					return nil
 				}
-				res, err := art.Save(dir, file, *rom.CoverURL)
-				switch {
-				case err != nil:
-					return err
-				case res.Path != "":
-					log.Printf("box art: wrote %s", res.Path)
-				default:
-					log.Printf("box art: skipped %s/%s: %s", dir, file, res.Skip)
-				}
-				return nil
 			}
 			return downloadui.Show(r, downloadui.Fonts{Mid: mid, Small: small, Tiny: tiny}, q, client) == downloadui.Quit
 		}
