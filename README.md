@@ -2,9 +2,15 @@
 
 On-device client for [birdROMs](https://github.com/amtypaldos/birdROMs): Go + SDL2 app for muOS (RG40XX-V first).
 
+## ROCKNIX alpha
+
+An experimental AArch64 ROCKNIX package is available for SD-card testing.
+See the [installation guide and hardware checklist](docs/platforms/rocknix.md).
+Hardware validation and self-hosted ROCKNIX updates are still pending.
+
 ## Platform roadmap
 
-ROCKNIX, Batocera and KNULLI ports are planned in separate branches. See the
+ROCKNIX alpha development, Batocera and KNULLI ports are tracked in separate branches. See the
 [implementation plan and progress checklist](docs/superpowers/plans/2026-11-03-linux-platforms.md)
 and [scope and support requirements](docs/superpowers/specs/2026-11-03-linux-platforms.md).
 These are planned targets, not current compatibility claims.

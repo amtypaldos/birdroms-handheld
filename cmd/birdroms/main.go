@@ -88,6 +88,9 @@ func run() error {
 		return fmt.Errorf("renderer: %w", err)
 	}
 	defer r.Destroy()
+	if err := configureViewport(r, profile.Target); err != nil {
+		return err
+	}
 	w, h, _ := r.GetOutputSize()
 	log.Printf("output size: %dx%d", w, h)
 
@@ -249,4 +252,13 @@ func appDir() string {
 		return "."
 	}
 	return filepath.Dir(exe)
+}
+
+// The shared UI draws at 640x480. SDL letterboxes/scales it on wider ROCKNIX
+// displays while preserving the existing muOS rendering behavior.
+func configureViewport(r *sdl.Renderer, target firmware.Target) error {
+	if target == firmware.Rocknix {
+		return r.SetLogicalSize(screenW, screenH)
+	}
+	return nil
 }
