@@ -56,6 +56,7 @@ Implementation evidence: [Linux foundation](../../platforms/linux-foundation.md)
 - [x] Inspect source and document design/rollout on main.
 - [x] Foundation merged; existing muOS behavior verified (PR #15).
 - [x] ROCKNIX alpha package/build complete; physical validation remains open.
+- [x] Hardware-pending [ROCKNIX alpha published and verified](../../platforms/testing/2026-11-03-rocknix-alpha.md) after source merge (PR #16).
 - [ ] ROCKNIX server/page integration complete.
 - [ ] ROCKNIX hardware acceptance recorded and release published.
 - [ ] Batocera package/build complete.
