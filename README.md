@@ -6,6 +6,13 @@ On-device client for [birdROMs](https://github.com/amtypaldos/birdROMs): Go + SD
 
 A native C++17/libnx/SDL2 port lives in [`switch/`](switch/README.md), with a Docker build, host tests, and `birdroms.nro`. It downloads to RetroArch ROM folders and updates from the paired self-hosted server. Initial user hardware testing passed; see the installation guide and testing checklist there. Existing Go builds and releases are unchanged.
 
+## Platform roadmap
+
+ROCKNIX, Batocera and KNULLI ports are planned in separate branches. See the
+[implementation plan and progress checklist](docs/superpowers/plans/2026-11-03-linux-platforms.md)
+and [scope and support requirements](docs/superpowers/specs/2026-11-03-linux-platforms.md).
+These are planned targets, not current compatibility claims.
+
 ## Build
 
 Cross-compiled from macOS to a **dynamic arm64** binary linked against the device's own SDL2/SDL2_ttf (the device ships them; they need glibc >= 2.38, so the target is `aarch64-linux-gnu.2.38`).
