@@ -25,7 +25,7 @@ func TestResolveMuOSCompatibility(t *testing.T) {
 }
 
 func TestResolveDoesNotInventPlannedFirmwareSupport(t *testing.T) {
-	for _, target := range []Target{"typo", Rocknix, Batocera, Knulli} {
+	for _, target := range []Target{"typo", Batocera, Knulli} {
 		if _, err := Resolve(target, func(string) string { return "" }); err == nil {
 			t.Errorf("accepted unavailable target %q", target)
 		}

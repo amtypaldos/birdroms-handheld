@@ -55,7 +55,7 @@ Implementation evidence: [Linux foundation](../../platforms/linux-foundation.md)
 
 - [x] Inspect source and document design/rollout on main.
 - [x] Foundation merged; existing muOS behavior verified (PR #15).
-- [ ] ROCKNIX package/build complete.
+- [x] ROCKNIX alpha package/build complete; physical validation remains open.
 - [ ] ROCKNIX server/page integration complete.
 - [ ] ROCKNIX hardware acceptance recorded and release published.
 - [ ] Batocera package/build complete.
@@ -119,23 +119,25 @@ binary hash. Exact manifest schema is frozen with Task 3 before publication.
 - [ ] Record the user's model and installed ROCKNIX version; inspect actual
   `uname`, userspace ELF architecture, libc, SDL2/ttf, controller GUIDs, display
   driver, mount layout and launch environment. Save redacted facts in docs.
-- [ ] Read that version's firmware/system configuration and PortMaster runtime
+- [x] Read pinned upstream firmware/system configuration and PortMaster runtime
   contracts. Confirm supported launcher location and system directories; add
   mapping provenance. Do not derive folders from the muOS CSV column.
-- [ ] Add failing mapping tests for NES/SNES/GB/GBA/Genesis/PSX, absent systems,
+- [x] Add failing mapping tests for NES/SNES/GB/GBA/Genesis/PSX, absent systems,
   unknown names and safe overrides. Add package tests for exact layout,
   executable launcher, spaces in paths, missing dependencies and no secrets.
-- [ ] Establish pinned reproducible sysroot/toolchain based on collected ABI
-  requirements; inspect ELF interpreter, dependencies and maximum GLIBC/GLIBCXX
+- [x] Establish pinned reproducible sysroot/toolchain based on collected ABI
+  requirements from pinned upstream source (installed-device check pending); inspect ELF interpreter, dependencies and maximum GLIBC/GLIBCXX
   symbols. Do not reuse the muOS glibc 2.38 build without evidence.
-- [ ] Implement mappings, launcher and package; use supported PortMaster
+- [x] Implement mappings, launcher and package; use supported PortMaster
   environment helpers only where confirmed. Do not globally stop frontend
   services with a copied command from another device.
-- [ ] Test launcher fixtures with fake app/helper commands: normal exit,
+- [x] Test launcher fixtures with fake app/helper commands: normal exit,
   cancellation, app crash and repeated launch all restore required state.
-- [ ] Run shared tests, package tests and clean target build. Publish CI
+- [x] Run shared tests, package tests and clean target build. Publish CI
   artifacts as hardware-pending; retain existing muOS/Switch release jobs.
-- [ ] Complete Tasks 3 and 4 for ROCKNIX before marking supported or releasing.
+- [ ] Complete Tasks 3 and 4 before a supported/stable ROCKNIX release. The user
+  authorized a hardware-pending GitHub alpha on 2026-11-03; it uses manual ZIP
+  updates and leaves server/page integration open.
 
 ## Task 3 — Target-specific self-hosted distribution and updates
 

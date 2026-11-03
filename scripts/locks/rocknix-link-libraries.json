@@ -1,0 +1,20 @@
+[
+  {
+    "name": "libsdl2-2.0-0",
+    "version": "2.30.0+dfsg-1ubuntu3.1",
+    "url": "https://ports.ubuntu.com/ubuntu-ports/pool/main/libs/libsdl2/libsdl2-2.0-0_2.30.0+dfsg-1ubuntu3.1_arm64.deb",
+    "sha256": "3406a7a3cf98a633c9a1289eb20a31e03a04477afb95c8558f2de7f70abdd0bb"
+  },
+  {
+    "name": "libfreetype6",
+    "version": "2.13.2+dfsg-1ubuntu0.2",
+    "url": "https://ports.ubuntu.com/ubuntu-ports/pool/main/f/freetype/libfreetype6_2.13.2+dfsg-1ubuntu0.2_arm64.deb",
+    "sha256": "d334b74c57a7c7b7847c1851161ead832a66e4160cf8393bbd142bd3864ee75e"
+  },
+  {
+    "name": "libsdl2-ttf-2.0-0",
+    "version": "2.22.0+dfsg-1",
+    "url": "https://ports.ubuntu.com/ubuntu-ports/pool/universe/libs/libsdl2-ttf/libsdl2-ttf-2.0-0_2.22.0+dfsg-1_arm64.deb",
+    "sha256": "7a23ed32398355c4e771a8a1eae344f3cbbaca6deffe4172f8ce900dd4154687"
+  }
+]

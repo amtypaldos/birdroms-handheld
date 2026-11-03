@@ -53,3 +53,11 @@ package: build
 # Run natively on this machine (needs `brew install sdl2 sdl2_ttf pkgconf`); keys: arrows, Z/X=A/B, A/S=X/Y, Q/W=L1/R1, Enter=Start, Esc=Menu.
 run:
     go run ./cmd/birdroms
+
+# Experimental ROCKNIX AArch64 build; firmware SDL libraries stay on the device.
+build-rocknix:
+    scripts/build-linux.sh rocknix "{{version}}"
+
+# Set VERSION=YYYY.MM.DD-alpha.N; optional BIRDROMS_SEED_SERVER personalizes only server.json.
+package-rocknix: build-rocknix
+    scripts/package-linux.sh rocknix "{{version}}" --server-url "${BIRDROMS_SEED_SERVER:-}"

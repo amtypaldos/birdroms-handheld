@@ -44,11 +44,14 @@ func MuOSProfile(mount string, libraries ...string) Profile {
 	return p
 }
 
-// Resolve defaults an unset target to muOS. Planned targets fail closed until
-// their launcher, directory map and update contract are implemented together.
+// Resolve defaults an unset target to muOS. Firmware-specific launchers supply
+// explicit storage roots; targets without a resolver fail closed.
 func Resolve(target Target, getenv func(string) string) (Profile, error) {
 	if target == "" {
 		target = MuOS
+	}
+	if target == Rocknix {
+		return resolveRocknix(getenv)
 	}
 	if target != MuOS {
 		return Profile{}, fmt.Errorf("firmware %q is not available in this build", target)

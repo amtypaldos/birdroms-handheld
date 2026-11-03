@@ -1,0 +1,98 @@
+name: ROCKNIX alpha
+
+on:
+  push:
+    branches: [main, feature/rocknix]
+    tags: ['rocknix-v*']
+    paths:
+      - '.github/workflows/rocknix.yml'
+      - 'cmd/**'
+      - 'internal/**'
+      - 'ui/**'
+      - 'go.*'
+      - 'assets/**'
+      - 'package/rocknix/**'
+      - 'scripts/*linux*'
+      - 'scripts/*rocknix*'
+      - 'scripts/locks/**'
+      - 'docs/platforms/rocknix.md'
+  pull_request:
+    paths:
+      - '.github/workflows/rocknix.yml'
+      - 'cmd/**'
+      - 'internal/**'
+      - 'ui/**'
+      - 'go.*'
+      - 'package/rocknix/**'
+      - 'scripts/**'
+      - 'docs/platforms/rocknix.md'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  rocknix:
+    name: Test and build ROCKNIX AArch64
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.17.0
+      - name: Host dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libsdl2-dev libsdl2-ttf-dev pkg-config python3
+      - name: Test
+        run: |
+          go test ./...
+          go vet ./...
+          python3 scripts/test-rocknix-launcher.py
+          python3 scripts/test-linux-package.py
+          bash -n package/rocknix/birdROMs.sh scripts/build-linux.sh scripts/package-linux.sh
+      - name: Version and seed
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            [[ "$GITHUB_REF_NAME" =~ ^rocknix-v[0-9]{4}\.[0-9]{2}\.[0-9]{2}(-alpha\.[1-9][0-9]*)$ ]] || exit 1
+            echo "VERSION=${GITHUB_REF_NAME#rocknix-v}" >> "$GITHUB_ENV"
+            echo 'SEED_SERVER=https://retro.birdperson.net' >> "$GITHUB_ENV"
+          else
+            echo "VERSION=$(date -u +%Y.%m.%d)-alpha.1" >> "$GITHUB_ENV"
+            echo 'SEED_SERVER=' >> "$GITHUB_ENV"
+          fi
+      - name: Pinned sysroot and build
+        run: |
+          python3 scripts/rocknix-sysroot.py sysroot/rocknix
+          scripts/build-linux.sh rocknix "$VERSION"
+          scripts/package-linux.sh rocknix "$VERSION" --server-url "$SEED_SERVER"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: birdROMs-rocknix-aarch64
+          path: |
+            dist/birdROMs-rocknix-aarch64.zip
+            dist/birdROMs-rocknix-aarch64.zip.sha256
+          if-no-files-found: error
+      - name: Publish ROCKNIX prerelease
+        if: startsWith(github.ref, 'refs/tags/rocknix-v')
+        uses: softprops/action-gh-release@v3
+        with:
+          prerelease: true
+          make_latest: 'false'
+          name: 'ROCKNIX alpha ${{ env.VERSION }}'
+          body: |
+            Hardware-pending ROCKNIX AArch64 alpha. Extract the ZIP into your ROM card's roms/ports folder, keeping birdROMs.sh beside birdroms/.
+
+            The server.json seed points to https://retro.birdperson.net. Edit it before pairing if you use another server. No token or runtime config is included.
+
+            Automatic ROCKNIX updates and self-hosted ZIP distribution are not enabled in this alpha. Preserve birdroms/config.json when installing a newer ZIP. Physical device launch, display, controls and download validation remain pending.
+
+            See the attached ROCKNIX guide for installation, controls, limitations and the hardware checklist.
+          files: |
+            dist/birdROMs-rocknix-aarch64.zip
+            dist/birdROMs-rocknix-aarch64.zip.sha256
+            docs/platforms/rocknix.md

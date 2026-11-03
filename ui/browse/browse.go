@@ -196,6 +196,10 @@ func buttonFromController(b uint8) (input.Button, bool) {
 		return input.B, true
 	case sdl.CONTROLLER_BUTTON_Y:
 		return input.Y, true
+	case sdl.CONTROLLER_BUTTON_LEFTSHOULDER:
+		return input.L1, true
+	case sdl.CONTROLLER_BUTTON_RIGHTSHOULDER:
+		return input.R1, true
 	case sdl.CONTROLLER_BUTTON_START:
 		return input.Start, true
 	case sdl.CONTROLLER_BUTTON_GUIDE:
