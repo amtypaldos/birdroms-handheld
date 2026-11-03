@@ -58,3 +58,12 @@ func Folder(platform string) (dir string, known bool) {
 	}
 	return Unsorted, false
 }
+
+// Folders returns an independent copy of the muOS map for a firmware profile.
+func Folders() map[string]string {
+	result := make(map[string]string, len(folders))
+	for name, dir := range folders {
+		result[name] = dir
+	}
+	return result
+}
