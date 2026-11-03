@@ -1,0 +1,9 @@
+build/
+*.elf
+*.map
+*.nacp
+tests/build/
+
+birdROMs-switch.zip
+birdROMs-switch.zip.sha256
+*.zip.part
