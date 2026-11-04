@@ -60,6 +60,7 @@ Implementation evidence: [Linux foundation](../../platforms/linux-foundation.md)
 - [ ] ROCKNIX server/page integration complete.
 - [ ] ROCKNIX hardware acceptance recorded and release published.
 - [x] Batocera AArch64 alpha package/build complete; physical validation pending.
+- [x] Hardware-pending [Batocera alpha published and verified](../../platforms/testing/2026-11-04-batocera-alpha.md) after source merge (PR #17).
 - [ ] Batocera server/page integration complete.
 - [ ] Batocera hardware acceptance recorded and release published.
 - [ ] KNULLI package/build complete.
@@ -232,8 +233,9 @@ config belongs to a persistent writable app directory, not a read-only root.
 - [x] Audit pinned upstream43.1 runtime/ABI (installed-device checks pending) and add Batocera-specific mapping
   tests from its system definitions. Prove paths are lowercase where required;
   root must not become `/userdata/roms/Roms`.
-- [x] Add failing launcher/package tests for read-only system partition,
-  userdata on alternate storage, spaces, crash/exit and frontend restoration.
+- [x] Add failing launcher/package tests for alternate storage, spaces,
+  crash/exit and native controller-environment preservation. Actual read-only
+  firmware/frontend restoration checks remain in physical acceptance.
 - [x] Implement target profile/build/Ports launcher; share ROCKNIX binary only
   if runtime ABI checks pass, otherwise build with a separate compatible sysroot.
 - [x] Document the official Batocera game-list refresh action (physical check pending). External

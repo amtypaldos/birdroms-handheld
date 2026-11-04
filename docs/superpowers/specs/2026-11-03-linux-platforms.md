@@ -50,7 +50,7 @@ can run every firmware, or that a successful build establishes hardware support.
 | Linux profile/build foundation | `feature/linux-platform-profiles` | Merged: PR #15; automated muOS regression/build checks passed |
 | muOS regression gate | foundation + every platform branch | Existing implementation; revalidate |
 | ROCKNIX AArch64 | `feature/rocknix` | Alpha merged/published (PR #16); hardware and self-hosted distribution pending |
-| Batocera AArch64 | `feature/batocera` | Planned; distinct launcher/package |
+| Batocera AArch64 | `feature/batocera` | Alpha merged/published (PR #17); hardware and self-hosted distribution pending |
 | KNULLI AArch64 | `feature/knulli` | Planned; distinct firmware validation |
 | ArkOS / AmberELEC | future separate branches | Candidates; not committed support |
 | Batocera x86_64 / Bazzite / Linux desktop / Steam Deck | future separate branches | Deferred architectures/packaging |

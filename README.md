@@ -10,7 +10,7 @@ Hardware validation and self-hosted ROCKNIX updates are still pending.
 
 ## Batocera alpha
 
-A separate AArch64 Batocera Ports package is in development for testing. See the
+A separate experimental AArch64 Batocera Ports package is available for testing. See the
 [installation guide and hardware checklist](docs/platforms/batocera.md). It uses
 Batocera's native controller setup; physical validation remains pending.
 
