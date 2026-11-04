@@ -50,6 +50,9 @@ func Resolve(target Target, getenv func(string) string) (Profile, error) {
 	if target == "" {
 		target = MuOS
 	}
+	if target == Batocera {
+		return resolveBatocera(getenv)
+	}
 	if target == Rocknix {
 		return resolveRocknix(getenv)
 	}

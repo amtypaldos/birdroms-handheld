@@ -8,6 +8,12 @@ An experimental AArch64 ROCKNIX package is available for SD-card testing.
 See the [installation guide and hardware checklist](docs/platforms/rocknix.md).
 Hardware validation and self-hosted ROCKNIX updates are still pending.
 
+## Batocera alpha
+
+A separate AArch64 Batocera Ports package is in development for testing. See the
+[installation guide and hardware checklist](docs/platforms/batocera.md). It uses
+Batocera's native controller setup; physical validation remains pending.
+
 ## Platform roadmap
 
 ROCKNIX alpha development, Batocera and KNULLI ports are tracked in separate branches. See the

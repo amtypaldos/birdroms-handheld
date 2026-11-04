@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
-target="${1:?usage: build-linux.sh rocknix VERSION}"
+target="${1:?usage: build-linux.sh TARGET VERSION (rocknix or batocera)}"
 version="${2:?version required}"
-[ "$target" = rocknix ] || { echo "Unsupported Linux target: $target" >&2; exit 1; }
-sysroot="${ROCKNIX_SYSROOT:-$PWD/sysroot/rocknix}"
-[ -f "$sysroot/include/SDL2/SDL_ttf.h" ] || python3 scripts/rocknix-sysroot.py "$sysroot"
+case "$target" in
+ rocknix) sysroot="${ROCKNIX_SYSROOT:-$PWD/sysroot/rocknix}" ;;
+ batocera) sysroot="${BATOCERA_SYSROOT:-$PWD/sysroot/batocera}" ;;
+ *) echo "Unsupported Linux target: $target" >&2; exit 1 ;;
+esac
+[ -f "$sysroot/include/SDL2/SDL_ttf.h" ] || python3 scripts/linux-sysroot.py "$sysroot"
 mkdir -p "dist/$target"
 PKG_CONFIG=true CGO_ENABLED=1 GOOS=linux GOARCH=arm64 \
 CC="zig cc -target aarch64-linux-gnu.2.17" \

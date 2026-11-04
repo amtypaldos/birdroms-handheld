@@ -47,6 +47,19 @@ class PackageTests(unittest.TestCase):
         sha=self.output.with_suffix('.zip.sha256').read_text().split()[0]
         self.assertEqual(sha,hashlib.sha256(self.output.read_bytes()).hexdigest())
 
+    def test_batocera_has_own_manifest_launcher_and_docs(self):
+        p=self.package(target='batocera',version='2026.11.04-alpha.1')
+        self.assertEqual(p.returncode,0,p.stderr)
+        with zipfile.ZipFile(self.output) as z:
+            manifest=json.loads(z.read('birdroms/version.json'))
+            self.assertEqual(manifest['platform'],'batocera')
+            self.assertEqual(manifest['version'],'2026.11.04-alpha.1')
+            launcher=z.read('birdROMs.sh').decode()
+            self.assertIn('BIRDROMS_FIRMWARE=batocera',launcher)
+            self.assertNotIn('/PortMaster/',launcher)
+            self.assertIn('Batocera',z.read('birdroms/README.md').decode())
+            self.assertFalse(any(n.endswith('config.json') for n in z.namelist()))
+
     def test_reproducible_archive(self):
         self.assertEqual(self.package().returncode,0)
         before=self.output.read_bytes()
@@ -59,7 +72,7 @@ class PackageTests(unittest.TestCase):
         self.assertFalse(self.output.exists())
 
     def test_invalid_version_target_and_url_rejected(self):
-        for args in [dict(version='2026.02.30-alpha.1'),dict(target='batocera'),dict(server='https://user:secret@example.com'),dict(server='file:///tmp'),dict(server='https://example.com/#token')]:
+        for args in [dict(version='2026.02.30-alpha.1'),dict(target='knulli'),dict(server='https://user:secret@example.com'),dict(server='file:///tmp'),dict(server='https://example.com/#token')]:
             p=self.package(**args);self.assertNotEqual(p.returncode,0,p.stdout)
             self.assertFalse(self.output.exists())
 

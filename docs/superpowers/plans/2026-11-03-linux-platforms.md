@@ -59,7 +59,7 @@ Implementation evidence: [Linux foundation](../../platforms/linux-foundation.md)
 - [x] Hardware-pending [ROCKNIX alpha published and verified](../../platforms/testing/2026-11-03-rocknix-alpha.md) after source merge (PR #16).
 - [ ] ROCKNIX server/page integration complete.
 - [ ] ROCKNIX hardware acceptance recorded and release published.
-- [ ] Batocera package/build complete.
+- [x] Batocera AArch64 alpha package/build complete; physical validation pending.
 - [ ] Batocera server/page integration complete.
 - [ ] Batocera hardware acceptance recorded and release published.
 - [ ] KNULLI package/build complete.
@@ -211,7 +211,11 @@ test date, observed results and outstanding limitations. Never include tokens.
 
 ## Task 5 — Batocera AArch64
 
-**Branch:** `feature/batocera`, from main after ROCKNIX acceptance/integration.
+**Branch:** `feature/batocera`, from main after ROCKNIX integration.
+
+The user deferred ROCKNIX hardware testing and requested the next target on
+2026-11-04. Independent alpha builds may proceed; physical acceptance and
+stable support remain open for both targets.
 
 **Files:** create `internal/firmware/batocera.go`, matching tests,
 `package/batocera/birdROMs.sh`, launcher tests,
@@ -225,14 +229,14 @@ config belongs to a persistent writable app directory, not a read-only root.
 
 - [ ] Verify a Batocera release/image actually supports the user's exact model
   before flashing/testing; keep a backup of existing cards and configuration.
-- [ ] Repeat Task 2 runtime/ABI reconnaissance and add Batocera-specific mapping
+- [x] Audit pinned upstream43.1 runtime/ABI (installed-device checks pending) and add Batocera-specific mapping
   tests from its system definitions. Prove paths are lowercase where required;
   root must not become `/userdata/roms/Roms`.
-- [ ] Add failing launcher/package tests for read-only system partition,
+- [x] Add failing launcher/package tests for read-only system partition,
   userdata on alternate storage, spaces, crash/exit and frontend restoration.
-- [ ] Implement target profile/build/Ports launcher; share ROCKNIX binary only
+- [x] Implement target profile/build/Ports launcher; share ROCKNIX binary only
   if runtime ABI checks pass, otherwise build with a separate compatible sysroot.
-- [ ] Document game-list refresh using tested Batocera UI behavior. External
+- [x] Document the official Batocera game-list refresh action (physical check pending). External
   frontend art/gamelist rewriting remains outside this port's initial scope.
 - [ ] Complete Task 3 distribution/page integration and Task 4 hardware gate.
 - [ ] Merge/release independently and update tracker before starting KNULLI.
@@ -263,8 +267,10 @@ Keep separate target identity even if a tested binary or mapping table is shared
 
 ArkOS and AmberELEC can follow separate branches using the same gates after the
 three targets above. Select them only when there is a tester and a supported
-image for an available device. Batocera x86_64 and Steam Deck require explicit
-architecture artifacts/CI; never label an AArch64 package universal. Desktop and
+image for an available device. Bazzite, Batocera x86_64 and Steam Deck require explicit
+architecture artifacts/CI; never label an AArch64 package universal. Bazzite should share the desktop client with SteamOS; Flatpak/AppImage packaging,
+user-selected emulator ROM roots and Steam/controller integration need a separate
+branch and tests. Desktop and
 Android packaging are not prerequisites for these handheld releases.
 
 ## Completion and handoff

@@ -53,7 +53,7 @@ can run every firmware, or that a successful build establishes hardware support.
 | Batocera AArch64 | `feature/batocera` | Planned; distinct launcher/package |
 | KNULLI AArch64 | `feature/knulli` | Planned; distinct firmware validation |
 | ArkOS / AmberELEC | future separate branches | Candidates; not committed support |
-| Batocera x86_64 / Linux desktop / Steam Deck | future separate branches | Deferred architectures/packaging |
+| Batocera x86_64 / Bazzite / Linux desktop / Steam Deck | future separate branches | Deferred architectures/packaging |
 | Android / Windows / macOS | future separate projects within repo | Outside this rollout |
 
 Merge each accepted branch into main before starting the next dependent branch.
