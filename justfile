@@ -61,3 +61,12 @@ build-rocknix:
 # Set VERSION=YYYY.MM.DD-alpha.N; optional BIRDROMS_SEED_SERVER personalizes only server.json.
 package-rocknix: build-rocknix
     scripts/package-linux.sh rocknix "{{version}}" --server-url "${BIRDROMS_SEED_SERVER:-}"
+
+
+# Experimental Batocera AArch64 build with native Ports/controller integration.
+build-batocera:
+    scripts/build-linux.sh batocera "{{version}}"
+
+# Set VERSION=YYYY.MM.DD-alpha.N; optional URL-only seed, never device tokens.
+package-batocera: build-batocera
+    scripts/package-linux.sh batocera "{{version}}" --server-url "${BIRDROMS_SEED_SERVER:-}"

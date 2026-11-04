@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func TestRocknixLogicalViewport(t *testing.T) {
+func TestLinuxLogicalViewport(t *testing.T) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 	t.Setenv("SDL_VIDEODRIVER", "dummy")
@@ -25,11 +25,17 @@ func TestRocknixLogicalViewport(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer r.Destroy()
-	if err := configureViewport(r, firmware.Rocknix); err != nil {
-		t.Fatal(err)
-	}
-	width, height := r.GetLogicalSize()
-	if width != 640 || height != 480 {
-		t.Fatalf("logical viewport = %dx%d", width, height)
+	for _, target := range []firmware.Target{firmware.Rocknix, firmware.Batocera} {
+		if err := r.SetLogicalSize(0, 0); err != nil {
+			t.Fatal(err)
+		}
+		if err := configureViewport(r, target); err != nil {
+			t.Fatal(err)
+		}
+		width, height := r.GetLogicalSize()
+		if width != 640 || height != 480 {
+			t.Fatalf("%s logical viewport = %dx%d", target, width, height)
+		}
+
 	}
 }

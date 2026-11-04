@@ -254,10 +254,10 @@ func appDir() string {
 	return filepath.Dir(exe)
 }
 
-// The shared UI draws at 640x480. SDL letterboxes/scales it on wider ROCKNIX
+// The shared UI draws at 640x480. SDL letterboxes/scales it on wider Linux firmware
 // displays while preserving the existing muOS rendering behavior.
 func configureViewport(r *sdl.Renderer, target firmware.Target) error {
-	if target == firmware.Rocknix {
+	if target == firmware.Rocknix || target == firmware.Batocera {
 		return r.SetLogicalSize(screenW, screenH)
 	}
 	return nil
